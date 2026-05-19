@@ -113,7 +113,11 @@ export default function StudentManagement({ isEmbedded = false }) {
       load();
     } catch (err) {
       const msg = err.response?.data?.error || 'Save failed';
-      toast.error(msg);
+      if (err.response?.status === 409) {
+        setErrors((e) => ({ ...e, student_id: msg }));
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }

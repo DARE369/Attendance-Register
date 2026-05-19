@@ -30,6 +30,14 @@ api.interceptors.response.use(
 export const login = (username, password) =>
   api.post('/auth/login', { username, password });
 
+// ── Admin profile & user management ──────────────────────────────────────────
+export const getProfile      = ()       => api.get('/api/admin/profile');
+export const updateProfile   = (body)   => api.patch('/api/admin/profile', body);
+export const changePassword  = (body)   => api.post('/api/admin/change-password', body);
+export const getAdmins       = ()       => api.get('/api/admin/admins');
+export const createAdmin     = (body)   => api.post('/api/admin/admins', body);
+export const deleteAdmin     = (id)     => api.delete(`/api/admin/admins/${id}`);
+
 // ── Scan ──────────────────────────────────────────────────────────────────────
 export const scanBarcode = (barcode) =>
   api.post('/api/scan', { barcode, entry_point: 'main_gate' });
@@ -131,5 +139,8 @@ export const updateFraudAlert = (id, body)         => api.patch(`/api/admin/frau
 // ── Analytics ─────────────────────────────────────────────────────────────────
 export const getAnalytics = (start, end) =>
   api.get('/api/admin/analytics', { params: { start, end }, timeout: 30_000 });
+
+export const getStaffAnalytics = (teacher_id, start, end) =>
+  api.get(`/api/admin/staff-analytics/${teacher_id}`, { params: { start, end }, timeout: 30_000 });
 
 export default api;

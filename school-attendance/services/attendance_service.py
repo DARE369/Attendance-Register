@@ -68,6 +68,7 @@ def process_scan(
     student_id: str,
     scan_timestamp: datetime,
     entry_point: str = "main_gate",
+    student: dict | None = None,
 ) -> dict:
     """
     Core scan processor.
@@ -90,17 +91,18 @@ def process_scan(
             "message": "Please wait 5 seconds between scans",
         }
 
-    # 2 — Student lookup
-    try:
-        student = db.get_student(student_id)
-    except Exception as exc:
-        logger.error("[DB ERROR] get_student(%s): %s", student_id, exc)
-        return {
-            "status": "error",
-            "action": None,
-            "error": "Database connection error",
-            "message": "Could not reach the database. Please try again.",
-        }
+    # 2 — Student lookup (skip DB call if record was pre-fetched by caller)
+    if student is None:
+        try:
+            student = db.get_student(student_id)
+        except Exception as exc:
+            logger.error("[DB ERROR] get_student(%s): %s", student_id, exc)
+            return {
+                "status": "error",
+                "action": None,
+                "error": "Database connection error",
+                "message": "Could not reach the database. Please try again.",
+            }
 
     if not student:
         logger.warning("[NOT FOUND] barcode=%s", student_id)

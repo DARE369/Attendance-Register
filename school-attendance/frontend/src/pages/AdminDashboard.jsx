@@ -14,6 +14,7 @@ import NotificationSettings from '../components/NotificationSettings';
 import StudentManagement   from './StudentManagement';
 import TeacherManagement   from './TeacherManagement';
 import StaffTypeConfig     from './StaffTypeConfig';
+import AdminProfile        from './AdminProfile';
 
 import { getDashboard, exportCSV } from '../services/api';
 
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'holidays',    label: 'Holidays',     icon: HolidayIcon },
   { id: 'fraud',       label: 'Fraud Alerts', icon: FraudIcon },
   { id: 'audit',       label: 'Audit Logs',   icon: AuditIcon },
+  { id: 'profile',     label: 'Profile',      icon: ProfileIcon },
 ];
 
 // ── "Updated X ago" hook ──────────────────────────────────────────────────────
@@ -310,6 +312,7 @@ export default function AdminDashboard() {
           { id: 'holidays',    el: <HolidayManager isEmbedded /> },
           { id: 'fraud',       el: <FraudAlertsPanel isEmbedded /> },
           { id: 'audit',       el: <AuditLogs isEmbedded /> },
+          { id: 'profile',     el: <AdminProfile isEmbedded /> },
         ].map(({ id, el }) =>
           mountedTabs.current.has(id) ? (
             <div key={id} style={{ display: activeTab === id ? undefined : 'none' }}>
@@ -419,6 +422,15 @@ function ReportsIcon() {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M9 17v-2m3 2v-4m3 4v-6M4 21h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0
            00-1 1v15a1 1 0 001 1z" />
+    </svg>
+  );
+}
+function ProfileIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15
+           10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
 }

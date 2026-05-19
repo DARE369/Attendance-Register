@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import ScannerInput from '../components/ScannerInput';
 import ScanLog from '../components/ScanLog';
 import { usePersistentScans } from '../hooks/usePersistentScans';
+import { getDashboard } from '../services/api';
 import crestLogo from '../assets/Picture1.png';
+
+const POLL_MS = 5000;
 
 function useClock() {
   const [time, setTime] = useState(new Date());
@@ -35,13 +38,31 @@ function formatDate(date) {
 export default function ScannerPage() {
   const navigate    = useNavigate();
   const clock       = useClock();
-  const { scans, addScan, clearScans }      = usePersistentScans();
+  const { scans, addScan, clearScans } = usePersistentScans();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [serverSummary, setServerSummary] = useState(null);
+  const timerRef = useRef(null);
 
   const admin = (() => {
     try { return JSON.parse(localStorage.getItem('admin') || '{}'); }
     catch { return {}; }
   })();
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const { data } = await getDashboard(today);
+        if (!cancelled) setServerSummary(data?.summary ?? null);
+      } catch {
+        // silently ignore — fallback to local counts below
+      }
+      if (!cancelled) timerRef.current = setTimeout(poll, POLL_MS);
+    };
+    poll();
+    return () => { cancelled = true; clearTimeout(timerRef.current); };
+  }, []);
 
   const handleResult = (result) => {
     addScan(result);
@@ -55,9 +76,9 @@ export default function ScannerPage() {
 
   const today      = new Date().toISOString().split('T')[0];
   const todayScans = scans.filter((s) => (s.scanned_at || '').startsWith(today));
-  const arrivals   = todayScans.filter((s) => s.status === 'success' && s.action === 'arrival').length;
-  const departures = todayScans.filter((s) => s.status === 'success' && s.action === 'departure').length;
   const errors     = todayScans.filter((s) => s.status === 'error').length;
+  const arrivals   = serverSummary ? serverSummary.arrived   : todayScans.filter((s) => s.status === 'success' && s.action === 'arrival').length;
+  const departures = serverSummary ? serverSummary.departed  : todayScans.filter((s) => s.status === 'success' && s.action === 'departure').length;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">

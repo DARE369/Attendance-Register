@@ -194,9 +194,27 @@ def get_admin(username: str) -> Optional[dict]:
     )
 
 
+def get_admin_by_id(admin_id: str) -> Optional[dict]:
+    return _request(
+        "GET",
+        "admins",
+        params={"select": "*", "admin_id": _eq(admin_id)},
+        single=True,
+    )
+
+
+def get_all_admins() -> list[dict]:
+    return _request("GET", "admins", params={"select": "admin_id,username,role,display_name,email,phone,created_at", "order": "created_at.asc"}) or []
+
+
 def insert_admin(admin: dict) -> dict:
     data = _request("POST", "admins", json=admin)
     return data[0]
+
+
+def update_admin(admin_id: str, data: dict) -> dict:
+    result = _request("PATCH", "admins", params={"admin_id": _eq(admin_id)}, json=data)
+    return result[0] if result else {}
 
 
 def upsert_admin(admin: dict) -> dict:
@@ -437,11 +455,17 @@ def get_holidays(active_only: bool = False) -> list[dict]:
 
 
 def get_holiday_by_date(date_str: str) -> Optional[dict]:
-    return _request(
-        "GET", "holidays",
-        params={"select": "*", "holiday_date": _eq(date_str), "is_active": "eq.true"},
-        single=True,
-    )
+    # Matches single-day holidays (holiday_date == date_str) AND period holidays
+    # where the date falls within [holiday_date, holiday_end_date].
+    params = [
+        ("select", "*"),
+        ("holiday_date", f"lte.{date_str}"),
+        ("is_active", "eq.true"),
+        ("or", f"(holiday_end_date.is.null,holiday_end_date.gte.{date_str})"),
+        ("limit", "1"),
+    ]
+    results = _request("GET", "holidays", params=params)
+    return results[0] if results else None
 
 
 def insert_holiday(data: dict) -> dict:
@@ -457,6 +481,27 @@ def update_holiday(holiday_id: str, data: dict) -> dict:
 
 def delete_holiday(holiday_id: str) -> None:
     _request("DELETE", "holidays", params={"holiday_id": _eq(holiday_id)})
+
+
+# ---------------------------------------------------------------------------
+# Report templates
+# ---------------------------------------------------------------------------
+
+def get_report_templates() -> list[dict]:
+    try:
+        return _request("GET", "report_templates", params={"select": "*"}) or []
+    except Exception:
+        return []
+
+
+def upsert_report_template(template_key: str, admin_id: str, data: dict) -> dict:
+    payload = {**data, "template_key": template_key, "updated_by": admin_id}
+    result = _request(
+        "POST", "report_templates",
+        params={"on_conflict": "template_key"},
+        json=payload,
+    )
+    return result[0] if result else {}
 
 
 # ---------------------------------------------------------------------------

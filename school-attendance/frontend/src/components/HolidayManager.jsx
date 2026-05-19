@@ -3,11 +3,13 @@ import toast from 'react-hot-toast';
 import { getHolidays, addHoliday, updateHoliday, deleteHoliday } from '../services/api';
 
 const EMPTY_FORM = {
-  holiday_name: '',
-  holiday_date: '',
-  holiday_type: 'national',
-  applies_to:   'both',
-  description:  '',
+  holiday_name:     '',
+  holiday_date:     '',
+  holiday_end_date: '',
+  holiday_type:     'national',
+  applies_to:       'both',
+  description:      '',
+  is_period:        false,
 };
 
 const TYPE_COLORS = {
@@ -47,15 +49,19 @@ export default function HolidayManager({ isEmbedded = false }) {
 
   async function handleAdd() {
     if (!form.holiday_name.trim()) return toast.error('Holiday name is required');
-    if (!form.holiday_date)        return toast.error('Date is required');
+    if (!form.holiday_date)        return toast.error('Start date is required');
+    if (form.is_period && !form.holiday_end_date) return toast.error('End date is required for a period');
+    if (form.is_period && form.holiday_end_date < form.holiday_date)
+      return toast.error('End date must be on or after start date');
     setSaving(true);
     try {
       await addHoliday({
-        holiday_name: form.holiday_name.trim(),
-        holiday_date: form.holiday_date,
-        holiday_type: form.holiday_type,
-        applies_to:   form.applies_to,
-        description:  form.description.trim() || null,
+        holiday_name:     form.holiday_name.trim(),
+        holiday_date:     form.holiday_date,
+        holiday_end_date: form.is_period ? form.holiday_end_date : null,
+        holiday_type:     form.holiday_type,
+        applies_to:       form.applies_to,
+        description:      form.description.trim() || null,
       });
       toast.success('Holiday added');
       setForm(EMPTY_FORM);
@@ -107,23 +113,50 @@ export default function HolidayManager({ isEmbedded = false }) {
       {/* Add form */}
       {showForm && (
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-5 space-y-4">
-          <h3 className="font-bold text-gray-800">New Holiday</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-gray-800">New Holiday</h3>
+            {/* Period toggle */}
+            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 text-xs font-semibold">
+              <button
+                onClick={() => setForm({ ...form, is_period: false, holiday_end_date: '' })}
+                className={`px-3 py-1 rounded-md transition-colors ${!form.is_period ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
+                Single Day
+              </button>
+              <button
+                onClick={() => setForm({ ...form, is_period: true })}
+                className={`px-3 py-1 rounded-md transition-colors ${form.is_period ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
+                Period
+              </button>
+            </div>
+          </div>
           <div className="grid sm:grid-cols-2 gap-4">
-            <div>
+            <div className={form.is_period ? '' : 'sm:col-span-1'}>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Holiday Name</label>
               <input value={form.holiday_name}
                 onChange={(e) => setForm({ ...form, holiday_name: e.target.value })}
-                placeholder="e.g. Eid al-Fitr"
+                placeholder="e.g. Christmas Break"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
                            focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                {form.is_period ? 'Start Date' : 'Date'}
+              </label>
               <input type="date" value={form.holiday_date}
                 onChange={(e) => setForm({ ...form, holiday_date: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
                            focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            {form.is_period && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">End Date</label>
+                <input type="date" value={form.holiday_end_date}
+                  min={form.holiday_date || undefined}
+                  onChange={(e) => setForm({ ...form, holiday_end_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                             focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
               <select value={form.holiday_type}
@@ -150,7 +183,7 @@ export default function HolidayManager({ isEmbedded = false }) {
               <label className="block text-xs font-semibold text-gray-600 mb-1">Description (optional)</label>
               <input value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="e.g. School marks the end of Ramadan"
+                placeholder="e.g. End-of-year school break"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
                            focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
@@ -195,13 +228,24 @@ export default function HolidayManager({ isEmbedded = false }) {
                 <tr key={h.holiday_id}
                   className={`hover:bg-gray-50 transition-colors ${!h.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3 font-medium text-gray-900">{h.holiday_name}</td>
-                  <td className="px-4 py-3 text-gray-600 font-mono">{fmtDate(h.holiday_date)}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {h.holiday_end_date
+                      ? <>{fmtDate(h.holiday_date)} <span className="text-gray-400">–</span> {fmtDate(h.holiday_end_date)}</>
+                      : fmtDate(h.holiday_date)}
+                  </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      TYPE_COLORS[h.holiday_type] || TYPE_COLORS.custom
-                    }`}>
-                      {h.holiday_type}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        TYPE_COLORS[h.holiday_type] || TYPE_COLORS.custom
+                      }`}>
+                        {h.holiday_type}
+                      </span>
+                      {h.holiday_end_date && (
+                        <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          Period
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600 capitalize">{h.applies_to}</td>
                   <td className="px-4 py-3 text-center">

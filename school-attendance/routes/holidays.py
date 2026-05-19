@@ -48,16 +48,22 @@ def list_holidays():
 @token_required
 def add_holiday():
     body = request.get_json(silent=True) or {}
-    name        = (body.get("holiday_name") or "").strip()
-    date_str    = (body.get("holiday_date") or "").strip()
-    htype       = (body.get("holiday_type") or "custom").strip().lower()
-    applies_to  = (body.get("applies_to")   or "both").strip().lower()
-    description = (body.get("description")  or "").strip()
+    name         = (body.get("holiday_name")    or "").strip()
+    date_str     = (body.get("holiday_date")    or "").strip()
+    end_date_str = (body.get("holiday_end_date") or "").strip() or None
+    htype        = (body.get("holiday_type")    or "custom").strip().lower()
+    applies_to   = (body.get("applies_to")      or "both").strip().lower()
+    description  = (body.get("description")     or "").strip()
 
     if not name:
         return jsonify({"error": "holiday_name is required"}), 400
     if not _validate_date(date_str):
         return jsonify({"error": "holiday_date must be YYYY-MM-DD"}), 400
+    if end_date_str:
+        if not _validate_date(end_date_str):
+            return jsonify({"error": "holiday_end_date must be YYYY-MM-DD"}), 400
+        if end_date_str < date_str:
+            return jsonify({"error": "holiday_end_date must be on or after holiday_date"}), 400
     if htype not in _VALID_TYPES:
         return jsonify({"error": f"holiday_type must be one of {_VALID_TYPES}"}), 400
     if applies_to not in _VALID_APPLIES:
@@ -65,12 +71,13 @@ def add_holiday():
 
     try:
         row = db.insert_holiday({
-            "holiday_name": name,
-            "holiday_date": date_str,
-            "holiday_type": htype,
-            "applies_to":   applies_to,
-            "description":  description or None,
-            "is_active":    True,
+            "holiday_name":     name,
+            "holiday_date":     date_str,
+            "holiday_end_date": end_date_str,
+            "holiday_type":     htype,
+            "applies_to":       applies_to,
+            "description":      description or None,
+            "is_active":        True,
         })
         return jsonify({"holiday": row}), 201
     except Exception as exc:

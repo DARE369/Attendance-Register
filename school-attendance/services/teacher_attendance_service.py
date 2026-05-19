@@ -64,13 +64,7 @@ def _determine_check_out_status(scan_time: datetime, config: dict) -> tuple[str,
 # Public API
 # ---------------------------------------------------------------------------
 
-def is_teacher_barcode(barcode_id: str) -> bool:
-    """Return True if the barcode_id matches an active teacher record."""
-    teacher = db.get_teacher_by_barcode(barcode_id)
-    return teacher is not None
-
-
-def process_teacher_scan(barcode_id: str, scan_time: datetime) -> dict:
+def process_teacher_scan(barcode_id: str, scan_time: datetime, teacher: dict | None = None) -> dict:
     """
     Process a teacher barcode scan. Automatically determines check-in vs check-out.
 
@@ -78,7 +72,8 @@ def process_teacher_scan(barcode_id: str, scan_time: datetime) -> dict:
     works without changes:
       { status, action, student_name, comments, timestamp, message, record_type }
     """
-    teacher = db.get_teacher_by_barcode(barcode_id)
+    if teacher is None:
+        teacher = db.get_teacher_by_barcode(barcode_id)
     if not teacher:
         return {
             "status":  "error",

@@ -149,10 +149,11 @@ export default function SummaryCards({ summary, teacherSummary, loading }) {
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
           Teaching Staff
         </p>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-          <KPICard label="Total Staff"  value={ts.total}      icon={Icons.teacher} accentClass="border-blue-500"   textClass="text-blue-700"   bgClass="bg-blue-50"   loading={loading} />
-          <KPICard label="Checked In"   value={(ts.on_time ?? 0) + (ts.late ?? 0)} icon={Icons.check} accentClass="border-green-500"  textClass="text-green-700"  bgClass="bg-green-50"  loading={loading} subLabel={`${ts.late ?? 0} late`} />
-          <KPICard label="Not Arrived"  value={ts.pending}    icon={Icons.warn}    accentClass="border-orange-400" textClass="text-orange-700" bgClass="bg-orange-50" loading={loading} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <KPICard label="Total Staff"  value={ts.total}                             icon={Icons.teacher} accentClass="border-blue-500"   textClass="text-blue-700"   bgClass="bg-blue-50"   loading={loading} />
+          <KPICard label="Checked In"   value={(ts.on_time ?? 0) + (ts.late ?? 0)}  icon={Icons.check}   accentClass="border-green-500"  textClass="text-green-700"  bgClass="bg-green-50"  loading={loading} subLabel={`${ts.late ?? 0} late`} />
+          <KPICard label="Checked Out"  value={ts.checked_out ?? 0}                  icon={Icons.exit}    accentClass="border-indigo-500" textClass="text-indigo-700" bgClass="bg-indigo-50" loading={loading} />
+          <KPICard label="Not Arrived"  value={ts.pending}                            icon={Icons.warn}    accentClass="border-orange-400" textClass="text-orange-700" bgClass="bg-orange-50" loading={loading} />
         </div>
         <ProgressBar label="Staff On-Time Rate" pct={onTimePct}
           colorClass="bg-gradient-to-r from-blue-400 to-blue-600" loading={loading} />

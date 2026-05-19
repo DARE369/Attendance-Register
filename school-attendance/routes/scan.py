@@ -1,6 +1,7 @@
 import logging
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
@@ -28,6 +29,23 @@ def _validate_barcode(barcode: str) -> str | None:
     if not _BARCODE_RE.match(barcode):
         return "Invalid barcode format (alphanumeric, max 20 chars)"
     return None
+
+
+def _resolve_scan_target(barcode: str) -> tuple[dict | None, bool]:
+    """
+    Lookup teacher and student records in parallel.
+    Returns (record, is_teacher). record is None if barcode matches nothing.
+    """
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ft = pool.submit(db.get_teacher_by_barcode, barcode)
+        fs = pool.submit(db.get_student, barcode)
+        teacher = ft.result()
+        student = fs.result()
+    if teacher:
+        return teacher, True
+    if student:
+        return student, False
+    return None, False
 
 
 # ---------------------------------------------------------------------------
@@ -71,18 +89,25 @@ def handle_scan():
 
     logger.info("[REQUEST] barcode=%s entry_point=%s", barcode, entry_point)
 
-    # Route teacher barcodes to the teacher attendance service
-    teacher = db.get_teacher_by_barcode(barcode)
-    if teacher:
-        result = process_teacher_scan(barcode, _now())
-    else:
-        result = process_scan(barcode, _now(), entry_point)
+    record, is_teacher = _resolve_scan_target(barcode)
+    now = _now()
+    if is_teacher:
+        result = process_teacher_scan(barcode, now, teacher=record)
+    elif record is not None:
+        result = process_scan(barcode, now, entry_point, student=record)
         if result["status"] == "success":
             threading.Thread(
                 target=_fire_notifications,
                 args=(barcode, result["action"], result.get("comments"), result["timestamp"]),
                 daemon=True,
             ).start()
+    else:
+        result = {
+            "status": "error",
+            "action": None,
+            "error": f"ID not found ({barcode})",
+            "message": "Barcode not recognised. Please check the ID and try again.",
+        }
 
     status_code = 200 if result["status"] == "success" else 400
     return jsonify(result), status_code
@@ -134,11 +159,18 @@ def test_scan():
     entry_point = request.args.get("entry_point", "test").strip()
     logger.info("[TEST-SCAN] barcode=%s time=%s", barcode, now.strftime("%H:%M"))
 
-    teacher = db.get_teacher_by_barcode(barcode)
-    if teacher:
-        result = process_teacher_scan(barcode, now)
+    record, is_teacher = _resolve_scan_target(barcode)
+    if is_teacher:
+        result = process_teacher_scan(barcode, now, teacher=record)
+    elif record is not None:
+        result = process_scan(barcode, now, entry_point, student=record)
     else:
-        result = process_scan(barcode, now, entry_point)
+        result = {
+            "status": "error",
+            "action": None,
+            "error": f"ID not found ({barcode})",
+            "message": "Barcode not recognised. Please check the ID and try again.",
+        }
 
     status_code = 200 if result["status"] == "success" else 400
     return jsonify(result), status_code

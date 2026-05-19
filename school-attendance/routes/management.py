@@ -82,6 +82,9 @@ def add_student():
     if not student_id or not full_name or not class_name:
         return jsonify({"error": "student_id, full_name, and class are required"}), 400
 
+    if db.get_student(student_id):
+        return jsonify({"error": f"Student ID '{student_id}' is already registered"}), 409
+
     student = {
         "student_id":    student_id,
         "full_name":     full_name,
@@ -179,6 +182,9 @@ def add_teacher():
 
     if not full_name or not staff_type or not barcode_id:
         return jsonify({"error": "full_name, staff_type, and barcode_id are required"}), 400
+
+    if db.get_teacher_by_barcode(barcode_id):
+        return jsonify({"error": f"Barcode ID '{barcode_id}' is already assigned to another staff member"}), 409
 
     # Validate that the staff_type exists and is active
     config = db.get_staff_type(staff_type)

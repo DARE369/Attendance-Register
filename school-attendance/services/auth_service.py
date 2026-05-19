@@ -14,10 +14,11 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def generate_token(admin_id: str, username: str) -> str:
+def generate_token(admin_id: str, username: str, role: str = "admin") -> str:
     payload = {
         "sub": admin_id,
         "username": username,
+        "role": role,
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=Config.JWT_EXPIRY_HOURS),
     }
@@ -42,10 +43,11 @@ def authenticate(username: str, password: str) -> Optional[dict]:
     return admin
 
 
-def register_admin(username: str, password: str, email: str) -> dict:
+def register_admin(username: str, password: str, email: str = "", role: str = "admin") -> dict:
     payload = {
         "username": username,
         "password_hash": hash_password(password),
-        "email": email,
+        "email": email or None,
+        "role": role,
     }
     return db.insert_admin(payload)

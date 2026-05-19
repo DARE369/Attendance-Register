@@ -261,6 +261,96 @@ def analytics():
         return jsonify({"error": str(exc)}), 500
 
 
+@admin_bp.get("/staff-analytics/<teacher_id>")
+@token_required
+def staff_analytics(teacher_id: str):
+    today     = _date.today()
+    end_str   = request.args.get("end",   today.isoformat())
+    start_str = request.args.get("start", (_date(today.year, today.month, 1)).isoformat())
+
+    try:
+        end_date   = _date.fromisoformat(end_str)
+        start_date = _date.fromisoformat(start_str)
+        if (end_date - start_date).days > 365:
+            return jsonify({"error": "Date range too large (max 365 days)"}), 400
+
+        teachers = db.get_all_teachers()
+        teacher  = next((t for t in teachers if t["teacher_id"] == teacher_id), None)
+        if not teacher:
+            return jsonify({"error": "Teacher not found"}), 404
+
+        logs = db.get_teacher_logs(teacher_id=teacher_id)
+        logs_in_range = [
+            l for l in logs
+            if start_str <= (l.get("scan_date") or "") <= end_str
+        ]
+
+        num_days = (end_date - start_date).days + 1
+        school_days = sum(
+            1 for i in range(num_days)
+            if (_date.fromisoformat(start_str) + timedelta(days=i)).weekday() < 5
+        )
+
+        present     = sum(1 for l in logs_in_range if l.get("check_in_time"))
+        absent      = max(0, school_days - present)
+        late        = sum(1 for l in logs_in_range if l.get("check_in_status") == "late")
+        on_time     = sum(1 for l in logs_in_range if l.get("check_in_status") == "on_time")
+        early_out   = sum(1 for l in logs_in_range if l.get("check_out_status") == "early_departure")
+        checked_out = sum(1 for l in logs_in_range if l.get("check_out_time"))
+
+        check_in_times = [l["check_in_time"] for l in logs_in_range if l.get("check_in_time")]
+        avg_checkin = None
+        if check_in_times:
+            def _minutes(ts):
+                try:
+                    t = ts.split("T")[-1][:5]
+                    h, m = map(int, t.split(":"))
+                    return h * 60 + m
+                except Exception:
+                    return None
+            mins = [_minutes(ts) for ts in check_in_times if _minutes(ts) is not None]
+            if mins:
+                avg_m = sum(mins) // len(mins)
+                avg_checkin = f"{avg_m // 60:02d}:{avg_m % 60:02d}"
+
+        monthly: dict[str, dict] = {}
+        for l in logs_in_range:
+            month = (l.get("scan_date") or "")[:7]
+            if not month:
+                continue
+            m = monthly.setdefault(month, {"present": 0, "late": 0, "on_time": 0})
+            if l.get("check_in_time"):
+                m["present"] += 1
+            if l.get("check_in_status") == "late":
+                m["late"] += 1
+            elif l.get("check_in_status") == "on_time":
+                m["on_time"] += 1
+
+        return jsonify({
+            "teacher": {
+                "teacher_id": teacher["teacher_id"],
+                "full_name":  teacher["full_name"],
+                "staff_type": teacher["staff_type"],
+            },
+            "period": {"start": start_str, "end": end_str},
+            "school_days":       school_days,
+            "days_present":      present,
+            "days_absent":       absent,
+            "attendance_rate":   round(present / school_days * 100, 1) if school_days else 0,
+            "on_time_checkins":  on_time,
+            "late_checkins":     late,
+            "punctuality_rate":  round(on_time / present * 100, 1) if present else 0,
+            "avg_checkin_time":  avg_checkin,
+            "early_departures":  early_out,
+            "days_checked_out":  checked_out,
+            "monthly_breakdown": monthly,
+        })
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @admin_bp.get("/export-csv")
 @token_required
 def export_csv():

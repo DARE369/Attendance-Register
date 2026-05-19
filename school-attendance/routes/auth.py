@@ -22,8 +22,22 @@ def token_required(f):
             return jsonify({"error": "Token is invalid or expired"}), 401
         g.admin_id = payload["sub"]
         g.username = payload["username"]
+        g.role     = payload.get("role", "admin")
         return f(*args, **kwargs)
     return decorated
+
+
+def require_role(*roles):
+    """Decorator: requires the caller to have one of the given roles."""
+    def decorator(f):
+        @wraps(f)
+        @token_required
+        def decorated(*args, **kwargs):
+            if g.role not in roles:
+                return jsonify({"error": "Insufficient permissions"}), 403
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 # ---------------------------------------------------------------------------
@@ -43,13 +57,16 @@ def login():
     if not admin:
         return jsonify({"error": "Invalid credentials"}), 401
 
-    token = auth_service.generate_token(admin["admin_id"], admin["username"])
+    role  = admin.get("role", "admin")
+    token = auth_service.generate_token(admin["admin_id"], admin["username"], role=role)
     return jsonify({
         "token": token,
         "admin": {
-            "admin_id": admin["admin_id"],
-            "username": admin["username"],
-            "email": admin["email"],
+            "admin_id":    admin["admin_id"],
+            "username":    admin["username"],
+            "email":       admin.get("email"),
+            "display_name": admin.get("display_name"),
+            "role":        role,
         },
     })
 
@@ -80,4 +97,13 @@ def register():
 @auth_bp.get("/me")
 @token_required
 def me():
-    return jsonify({"admin_id": g.admin_id, "username": g.username})
+    from services import supabase_client as db
+    admin = db.get_admin_by_id(g.admin_id) or {}
+    return jsonify({
+        "admin_id":    g.admin_id,
+        "username":    g.username,
+        "role":        g.role,
+        "display_name": admin.get("display_name"),
+        "email":       admin.get("email"),
+        "phone":       admin.get("phone"),
+    })

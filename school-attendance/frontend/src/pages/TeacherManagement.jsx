@@ -2,21 +2,23 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getTeachers, addTeacher, updateTeacher, deleteTeacher, getStaffTypes } from '../services/api';
+import StaffAnalyticsPanel from '../components/StaffAnalyticsPanel';
 
 const EMPTY_FORM = { full_name: '', staff_type: '', barcode_id: '', phone: '', email: '' };
 
 export default function TeacherManagement({ isEmbedded = false }) {
   const navigate = useNavigate();
 
-  const [teachers,    setTeachers]    = useState([]);
-  const [staffTypes,  setStaffTypes]  = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [search,      setSearch]      = useState('');
-  const [modal,       setModal]       = useState(null);
-  const [selected,    setSelected]    = useState(null);
-  const [form,        setForm]        = useState(EMPTY_FORM);
-  const [saving,      setSaving]      = useState(false);
-  const [errors,      setErrors]      = useState({});
+  const [teachers,        setTeachers]        = useState([]);
+  const [staffTypes,      setStaffTypes]      = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [search,          setSearch]          = useState('');
+  const [modal,           setModal]           = useState(null);
+  const [selected,        setSelected]        = useState(null);
+  const [form,            setForm]            = useState(EMPTY_FORM);
+  const [saving,          setSaving]          = useState(false);
+  const [errors,          setErrors]          = useState({});
+  const [analyticsTeacher, setAnalyticsTeacher] = useState(null);
 
   const loadAll = useCallback(async () => {
     try {
@@ -114,7 +116,12 @@ export default function TeacherManagement({ isEmbedded = false }) {
       closeModal();
       loadAll();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save failed');
+      const msg = err.response?.data?.error || 'Save failed';
+      if (err.response?.status === 409) {
+        setErrors((e) => ({ ...e, barcode_id: msg }));
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -207,6 +214,10 @@ export default function TeacherManagement({ isEmbedded = false }) {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-center">
+                      <button onClick={() => setAnalyticsTeacher(t)}
+                        className="text-purple-600 hover:text-purple-800 font-medium mr-3 text-xs">
+                        Analytics
+                      </button>
                       <button onClick={() => openEdit(t)}
                         className="text-blue-600 hover:text-blue-800 font-medium mr-3 text-xs">
                         Edit
@@ -290,6 +301,13 @@ export default function TeacherManagement({ isEmbedded = false }) {
             </button>
           </div>
         </Modal>
+      )}
+
+      {analyticsTeacher && (
+        <StaffAnalyticsPanel
+          teacher={analyticsTeacher}
+          onClose={() => setAnalyticsTeacher(null)}
+        />
       )}
     </div>
   );

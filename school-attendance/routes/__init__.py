@@ -7,15 +7,19 @@ from routes.templates import templates_bp
 from routes.management import management_bp
 from routes.holidays import holidays_bp
 from routes.fraud_alerts import fraud_bp
+from routes.admin_management import admin_mgmt_bp
+from routes.reports import reports_bp
 
 
 def register_blueprints(app):
-    app.register_blueprint(auth_bp,       url_prefix="/auth")
-    app.register_blueprint(scan_bp,       url_prefix="/api")
-    app.register_blueprint(admin_bp,      url_prefix="/api/admin")
-    app.register_blueprint(settings_bp,   url_prefix="/api/admin")
-    app.register_blueprint(import_bp,     url_prefix="/api/admin")
-    app.register_blueprint(templates_bp,  url_prefix="/api/admin")
-    app.register_blueprint(management_bp, url_prefix="/api/admin")
-    app.register_blueprint(holidays_bp,   url_prefix="/api/admin")
-    app.register_blueprint(fraud_bp,      url_prefix="/api/admin")
+    app.register_blueprint(auth_bp,        url_prefix="/auth")
+    app.register_blueprint(scan_bp,        url_prefix="/api")
+    app.register_blueprint(admin_bp,       url_prefix="/api/admin")
+    app.register_blueprint(settings_bp,    url_prefix="/api/admin")
+    app.register_blueprint(import_bp,      url_prefix="/api/admin")
+    app.register_blueprint(templates_bp,   url_prefix="/api/admin")
+    app.register_blueprint(management_bp,  url_prefix="/api/admin")
+    app.register_blueprint(holidays_bp,    url_prefix="/api/admin")
+    app.register_blueprint(fraud_bp,       url_prefix="/api/admin")
+    app.register_blueprint(admin_mgmt_bp,  url_prefix="/api/admin")
+    app.register_blueprint(reports_bp,     url_prefix="/api/admin")
