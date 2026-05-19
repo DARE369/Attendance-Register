@@ -1,7 +1,6 @@
 from datetime import datetime
 from time import sleep
 from typing import Optional
-from urllib.parse import quote
 
 import requests
 
@@ -66,11 +65,11 @@ def _request(method: str, table: str, *, params: dict | None = None, json: objec
 
 
 def _eq(value: str) -> str:
-    return f"eq.{quote(str(value), safe='')}"
+    return f"eq.{value}"
 
 
 def _in(values: list) -> str:
-    return f"in.({','.join(quote(str(v), safe='') for v in values)})"
+    return f"in.({','.join(str(v) for v in values)})"
 
 
 # ---------------------------------------------------------------------------
