@@ -41,7 +41,9 @@ def create_app():
     _setup_logging()
     app = Flask(__name__)
     app.config.from_object(Config)
-    CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
+    raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+    cors_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    CORS(app, origins=cors_origins)
 
     register_blueprints(app)
 
