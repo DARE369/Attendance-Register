@@ -183,7 +183,7 @@ export default function ScannerInput({ onResult }) {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          aria-hidden="true"
+          aria-label="Barcode scanner input"
           className="absolute opacity-0 w-px h-px pointer-events-none"
           tabIndex={-1}
         />
