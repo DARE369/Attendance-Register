@@ -9,6 +9,8 @@ export default function AppHeader({ subtitle = 'Attendance Register', onSettings
     catch { return {}; }
   })();
 
+  const isScanner = admin.role === 'scanner';
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('admin');
@@ -20,7 +22,7 @@ export default function AppHeader({ subtitle = 'Attendance Register', onSettings
       style={{ background: 'linear-gradient(to right, #1a3a52, #2d5a7a)' }}>
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         {/* Brand */}
-        <Link to="/dashboard" className="flex items-center gap-3 shrink-0">
+        <Link to={isScanner ? '/scanner' : '/dashboard'} className="flex items-center gap-3 shrink-0">
           <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm shrink-0">
             <img src={crestLogo} alt="LPS crest" className="w-9 h-9 object-contain" />
           </div>
@@ -41,26 +43,30 @@ export default function AppHeader({ subtitle = 'Attendance Register', onSettings
             </svg>
             <span className="hidden sm:inline">Scanner</span>
           </Link>
-          <Link to="/import"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
-                       border border-white/20 rounded-lg text-sm font-semibold transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 0L8 8m4-4l4 4" />
-            </svg>
-            <span className="hidden md:inline">Import</span>
-          </Link>
-          <Link to="/templates"
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
-                       border border-white/20 rounded-lg text-sm font-semibold transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2
-                   2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-            <span className="hidden lg:inline">Templates</span>
-          </Link>
-          {onSettings && (
+          {!isScanner && (
+            <Link to="/import"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
+                         border border-white/20 rounded-lg text-sm font-semibold transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 0L8 8m4-4l4 4" />
+              </svg>
+              <span className="hidden md:inline">Import</span>
+            </Link>
+          )}
+          {!isScanner && (
+            <Link to="/templates"
+              className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
+                         border border-white/20 rounded-lg text-sm font-semibold transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2
+                     2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              <span className="hidden lg:inline">Templates</span>
+            </Link>
+          )}
+          {!isScanner && onSettings && (
             <button onClick={onSettings}
               className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
                          border border-white/20 rounded-lg text-sm font-semibold transition-colors">

@@ -35,7 +35,10 @@ export default function LoginPage() {
             <h2 className="text-lg font-semibold text-gray-800 mb-6">
               Admin Sign In
             </h2>
-            <LoginForm onSuccess={() => navigate('/scanner', { replace: true })} />
+            <LoginForm onSuccess={() => {
+              const admin = JSON.parse(localStorage.getItem('admin') || '{}');
+              navigate(admin.role === 'scanner' ? '/scanner' : '/dashboard', { replace: true });
+            }} />
           </div>
         </div>
 

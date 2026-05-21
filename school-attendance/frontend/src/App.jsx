@@ -9,9 +9,22 @@ import StudentManagement from './pages/StudentManagement';
 import TeacherManagement from './pages/TeacherManagement';
 import StaffTypeConfig    from './pages/StaffTypeConfig';
 
-function PrivateRoute({ children }) {
+function getRole() {
+  try { return JSON.parse(localStorage.getItem('admin') || '{}').role || 'admin'; }
+  catch { return 'admin'; }
+}
+
+function PrivateRoute({ children, adminOnly = false }) {
   const token = localStorage.getItem('token');
-  return token ? children : <Navigate to="/login" replace />;
+  if (!token) return <Navigate to="/login" replace />;
+  if (adminOnly && getRole() === 'scanner') return <Navigate to="/scanner" replace />;
+  return children;
+}
+
+function DefaultRedirect() {
+  const token = localStorage.getItem('token');
+  if (!token) return <Navigate to="/login" replace />;
+  return <Navigate to={getRole() === 'scanner' ? '/scanner' : '/dashboard'} replace />;
 }
 
 export default function App() {
@@ -26,15 +39,15 @@ export default function App() {
         }}
       />
       <Routes>
-        <Route path="/login"     element={<LoginPage />} />
-        <Route path="/scanner"   element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
-        <Route path="/dashboard" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
-        <Route path="/import"    element={<PrivateRoute><AdminBulkImport /></PrivateRoute>} />
-        <Route path="/templates"   element={<PrivateRoute><TemplateCustomization /></PrivateRoute>} />
-        <Route path="/students"   element={<PrivateRoute><StudentManagement /></PrivateRoute>} />
-        <Route path="/teachers"   element={<PrivateRoute><TeacherManagement /></PrivateRoute>} />
-        <Route path="/staff-types" element={<PrivateRoute><StaffTypeConfig /></PrivateRoute>} />
-        <Route path="*"           element={<Navigate to="/scanner" replace />} />
+        <Route path="/login"      element={<LoginPage />} />
+        <Route path="/scanner"    element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
+        <Route path="/dashboard"  element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
+        <Route path="/import"     element={<PrivateRoute adminOnly><AdminBulkImport /></PrivateRoute>} />
+        <Route path="/templates"  element={<PrivateRoute adminOnly><TemplateCustomization /></PrivateRoute>} />
+        <Route path="/students"   element={<PrivateRoute adminOnly><StudentManagement /></PrivateRoute>} />
+        <Route path="/teachers"   element={<PrivateRoute adminOnly><TeacherManagement /></PrivateRoute>} />
+        <Route path="/staff-types" element={<PrivateRoute adminOnly><StaffTypeConfig /></PrivateRoute>} />
+        <Route path="*"           element={<DefaultRedirect />} />
       </Routes>
     </BrowserRouter>
   );
