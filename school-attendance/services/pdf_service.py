@@ -185,8 +185,8 @@ def generate_daily_summary(
             cols = [("Name", 70), ("Type", 45), ("Check-In", 32), ("Status", 33)]
             pdf.table_header(cols)
             for i, t in enumerate(teachers[:30]):
-                ci = t.get("check_in_time") or "—"
-                if ci and ci != "—":
+                ci = t.get("check_in_time") or "-"
+                if ci and ci != "-":
                     try:
                         ci = ci.split("T")[-1][:5]
                     except Exception:
@@ -226,7 +226,7 @@ def generate_period_report(
     pdf.cell(0, 8, "Attendance Period Report", ln=True)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*GRAY_MED)
-    pdf.cell(0, 5, f"Period: {_fmt_date(start)} — {_fmt_date(end)}", ln=True)
+    pdf.cell(0, 5, f"Period: {_fmt_date(start)} - {_fmt_date(end)}", ln=True)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(5)
 
@@ -317,7 +317,7 @@ def generate_staff_report(
     pdf.cell(0, 8, "Staff Attendance Report", ln=True)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(*GRAY_MED)
-    pdf.cell(0, 5, f"Period: {_fmt_date(start)} — {_fmt_date(end)}", ln=True)
+    pdf.cell(0, 5, f"Period: {_fmt_date(start)} - {_fmt_date(end)}", ln=True)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(5)
 
