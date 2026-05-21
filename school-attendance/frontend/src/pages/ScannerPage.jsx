@@ -103,20 +103,22 @@ export default function ScannerPage() {
             <p className="text-blue-200 text-xs">{formatDate(clock)}</p>
           </div>
 
-          {/* Right: Dashboard link + Admin + Logout */}
+          {/* Right: Dashboard link (admin only) + Admin + Logout */}
           <div className="flex items-center gap-2">
-            <Link
-              to="/dashboard"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20
-                         rounded-lg text-sm font-semibold transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1
-                     1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Dashboard
-            </Link>
+            {admin.role !== 'scanner' && (
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20
+                           rounded-lg text-sm font-semibold transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1
+                       1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Dashboard
+              </Link>
+            )}
             {admin.username && (
               <span className="hidden sm:block text-sm text-blue-200 ml-1">
                 {admin.username}

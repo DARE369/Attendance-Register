@@ -62,10 +62,20 @@ export default function ScannerInput({ onResult }) {
 
     try {
       const { data } = await scanBarcode(trimmed);
+
+      // Backend returns HTTP 200 for holiday closures — handle separately
+      if (data.status === 'holiday') {
+        setStatus(STATUS.ERROR);
+        onResult({ id: Date.now(), status: 'holiday', action: null, message: data.message });
+        toast.error(data.message || 'School is closed today — scan not recorded.');
+        return;
+      }
+
       setStatus(STATUS.SUCCESS);
       lastScanRef.current = Date.now();
       onResult({ ...data, id: Date.now() });
 
+      const name   = data.student_name || data.message || 'Unknown';
       const action = data.action?.replace('_', ' ').toUpperCase() ?? '';
       const commentLabels = {
         early: 'early',
@@ -75,7 +85,7 @@ export default function ScannerInput({ onResult }) {
         late_checkout: 'late checkout',
       };
       const badge = commentLabels[data.comments] ? ` (${commentLabels[data.comments]})` : '';
-      toast.success(`${data.student_name} - ${action}${badge}`);
+      toast.success(`${name} - ${action}${badge}`);
     } catch (err) {
       setStatus(STATUS.ERROR);
       const errorData = err.response?.data ?? {};
