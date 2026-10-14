@@ -131,7 +131,7 @@ Open http://localhost:5173 in your browser.
 |--------|------------------------------|------|------------------------------|
 | POST   | /auth/login                  | No   | Admin login                  |
 | POST   | /auth/register               | No   | Register new admin           |
-| POST   | /api/scan                    | No   | Process barcode scan         |
+| POST   | /api/scan                    | Yes (any role) | Process barcode scan |
 | GET    | /api/test-scan               | No   | Test scan (dev only)         |
 | GET    | /api/admin/dashboard         | JWT  | Dashboard data               |
 | GET    | /api/admin/export-csv        | JWT  | Download attendance CSV      |

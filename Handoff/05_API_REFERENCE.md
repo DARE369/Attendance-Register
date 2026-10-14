@@ -29,8 +29,8 @@ server-side via `require_role()`.
 ## Scan — `routes/scan.py` (prefix `/api`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/scan` | none* | Process a barcode scan (`{ barcode, entry_point }`) |
-| POST | `/api/scan/confirm` | none* | Confirm ambiguous scan (`{ barcode, person_type, entry_point }`) |
+| POST | `/api/scan` | any role | Process a barcode scan (`{ barcode, entry_point }`) |
+| POST | `/api/scan/confirm` | any role | Confirm ambiguous scan (`{ barcode, person_type, entry_point }`) |
 
 \* Scan endpoints are open so the scanner kiosk works without per-request auth;
 the scanner page itself is behind login. Review before exposing publicly (doc 08).

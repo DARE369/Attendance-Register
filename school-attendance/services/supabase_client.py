@@ -380,6 +380,17 @@ def update_teacher_log(log_id: str, data: dict) -> dict:
     return result[0] if result else {}
 
 
+def update_teacher_log_if_open(log_id: str, data: dict) -> Optional[dict]:
+    """Write check-out fields only if check_out_time is still empty. Returns None if it was already set."""
+    data["updated_at"] = datetime.utcnow().isoformat()
+    result = _request(
+        "PATCH", "teacher_attendance_logs",
+        params={"log_id": _eq(log_id), "check_out_time": "is.null"},
+        json=data,
+    )
+    return result[0] if result else None
+
+
 def get_teacher_logs(date: Optional[str] = None, teacher_id: Optional[str] = None) -> list[dict]:
     params = [
         ("select", "*,teachers(full_name,staff_type)"),
@@ -477,9 +488,11 @@ def get_holidays(active_only: bool = False) -> list[dict]:
     return _request("GET", "holidays", params=params) or []
 
 
-def get_holiday_by_date(date_str: str) -> Optional[dict]:
+def get_holiday_by_date(date_str: str, audience: Optional[str] = None) -> Optional[dict]:
     # Matches single-day holidays (holiday_date == date_str) AND period holidays
     # where the date falls within [holiday_date, holiday_end_date].
+    # audience 'students' or 'staff' also keeps only holidays whose applies_to
+    # is that audience or 'both'; None matches any holiday.
     params = [
         ("select", "*"),
         ("holiday_date", f"lte.{date_str}"),
@@ -487,6 +500,8 @@ def get_holiday_by_date(date_str: str) -> Optional[dict]:
         ("or", f"(holiday_end_date.is.null,holiday_end_date.gte.{date_str})"),
         ("limit", "1"),
     ]
+    if audience:
+        params.append(("applies_to", _in([audience, "both"])))
     results = _request("GET", "holidays", params=params)
     return results[0] if results else None
 

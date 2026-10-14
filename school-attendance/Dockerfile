@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# School runs on Lagos time; services/tz.py also pins WAT explicitly.
+ENV TZ=Africa/Lagos
+
 WORKDIR /app
 
 COPY requirements.txt .

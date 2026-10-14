@@ -13,6 +13,8 @@ class Config:
     JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
     JWT_ALGORITHM = "HS256"
     JWT_EXPIRY_HOURS = 8
+    # The gate device logs in once in the morning and must last past late departures.
+    SCANNER_JWT_EXPIRY_HOURS = 18
     ADMIN_REGISTER_SECRET = os.getenv("ADMIN_REGISTER_SECRET", "")
     DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
 
@@ -27,3 +29,14 @@ class Config:
     D7_WHATSAPP_FROM = os.getenv("D7_WHATSAPP_FROM", "")  # your registered WhatsApp number e.g. +2348012345678
 
     SCHOOL_NAME = os.getenv("SCHOOL_NAME", "Peculiar School")
+
+    # Staff mobile sign-in (docs/staff-signin-plan.md)
+    # Staff sessions are signed with their own secret so they can never pass as admin tokens.
+    STAFF_JWT_SECRET = os.getenv("STAFF_JWT_SECRET", "dev-staff-secret-change-in-production")
+    # Passkeys are bound to this domain forever: set it to the final app domain before
+    # any staff member enrols (e.g. register.example.sch.ng, no scheme or port).
+    WEBAUTHN_RP_ID   = os.getenv("WEBAUTHN_RP_ID", "localhost")
+    WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "LPS Staff")
+    WEBAUTHN_ORIGIN  = os.getenv("WEBAUTHN_ORIGIN", "http://localhost:5173")  # full origin, with scheme
+    # Shared secret for scheduled jobs calling /api/internal/* (sent as X-Cron-Secret).
+    CRON_SECRET      = os.getenv("CRON_SECRET", "")

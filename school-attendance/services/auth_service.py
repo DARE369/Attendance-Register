@@ -14,13 +14,17 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
+def _expiry_hours(role: str) -> int:
+    return Config.SCANNER_JWT_EXPIRY_HOURS if role == "scanner" else Config.JWT_EXPIRY_HOURS
+
+
 def generate_token(admin_id: str, username: str, role: str = "admin") -> str:
     payload = {
         "sub": admin_id,
         "username": username,
         "role": role,
         "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=Config.JWT_EXPIRY_HOURS),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=_expiry_hours(role)),
     }
     return jwt.encode(payload, Config.JWT_SECRET, algorithm=Config.JWT_ALGORITHM)
 

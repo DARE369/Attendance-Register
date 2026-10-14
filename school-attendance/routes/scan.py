@@ -9,8 +9,13 @@ from services.attendance_service import process_scan
 from services import notification_service
 from services.teacher_attendance_service import process_teacher_scan
 from services import supabase_client as db
-from services.holiday_service import get_day_scan_status, STATUS_OPEN, STATUS_WEEKEND, STATUS_HOLIDAY, STATUS_BLOCKED, STATUS_OVERRIDE
+from services.holiday_service import (
+    get_day_scan_status, STATUS_WEEKEND, STATUS_HOLIDAY, STATUS_BLOCKED,
+    AUDIENCE_STUDENTS, AUDIENCE_STAFF,
+)
 from services import tz as _tz
+from config import Config
+from routes.auth import require_role
 
 scan_bp = Blueprint("scan", __name__)
 logger = logging.getLogger("scan")
@@ -30,10 +35,13 @@ def _validate_barcode(barcode: str) -> str | None:
     return None
 
 
-def _check_day_status() -> dict | None:
-    """Returns a ready-made error response if scanning is blocked today, else None."""
+def _check_day_status(audience: str | None = None) -> dict | None:
+    """
+    Returns a ready-made error response if scanning is blocked today, else None.
+    audience limits holidays to those that apply to students or staff.
+    """
     today = _now().strftime("%Y-%m-%d")
-    day_status = get_day_scan_status(today)
+    day_status = get_day_scan_status(today, audience)
     if day_status == STATUS_WEEKEND:
         return {"status": "holiday", "message": "School is closed today (weekend). Scan not recorded."}
     if day_status == STATUS_HOLIDAY:
@@ -68,7 +76,12 @@ def _person_summary(record: dict, person_type: str) -> dict:
 # POST /api/scan
 # ---------------------------------------------------------------------------
 
+# Every role may scan; the gate device logs in with the scanner role.
+_scanner_required = require_role("super_admin", "admin", "scanner")
+
+
 @scan_bp.post("/scan")
+@_scanner_required
 def handle_scan():
     body = request.get_json(silent=True) or {}
     barcode = (body.get("barcode") or "").strip().upper()
@@ -79,13 +92,18 @@ def handle_scan():
         logger.warning("[INVALID] barcode=%r — %s", barcode, error)
         return jsonify({"status": "error", "error": error, "message": "Please provide a valid barcode"}), 400
 
-    blocked = _check_day_status()
-    if blocked:
-        return jsonify(blocked), 200
-
     logger.info("[REQUEST] barcode=%s entry_point=%s", barcode, entry_point)
 
     teacher, student = db.get_both_by_barcode(barcode)
+
+    # Holidays can apply to students only or staff only, so the day check
+    # waits until we know who this is. Ambiguous scans are checked on confirm.
+    if not (teacher and student):
+        audience = AUDIENCE_STAFF if teacher else AUDIENCE_STUDENTS if student else None
+        blocked = _check_day_status(audience)
+        if blocked:
+            return jsonify(blocked), 200
+
     now = _now()
 
     # Conflict — both a teacher and a student share this barcode
@@ -128,6 +146,7 @@ def handle_scan():
 # ---------------------------------------------------------------------------
 
 @scan_bp.post("/scan/confirm")
+@_scanner_required
 def confirm_scan():
     """
     Body:
@@ -147,7 +166,7 @@ def confirm_scan():
     if person_type not in ("student", "teacher"):
         return jsonify({"status": "error", "error": "person_type must be 'student' or 'teacher'"}), 400
 
-    blocked = _check_day_status()
+    blocked = _check_day_status(AUDIENCE_STAFF if person_type == "teacher" else AUDIENCE_STUDENTS)
     if blocked:
         return jsonify(blocked), 200
 
@@ -190,6 +209,11 @@ def _fire_notifications(student_id: str, log_type: str, comments, timestamp: str
 
 @scan_bp.get("/test-scan")
 def test_scan():
+    # Unauthenticated and accepts any ?time=, so it must never write real
+    # records in production.
+    if not Config.DEBUG:
+        return jsonify({"status": "error", "error": "Not found"}), 404
+
     barcode = (request.args.get("barcode") or "").strip().upper()
     error = _validate_barcode(barcode)
     if error:

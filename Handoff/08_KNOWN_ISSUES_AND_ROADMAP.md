@@ -38,10 +38,10 @@ reality. Also present are scratch/diagnostic scripts (`diagnose.py`, `diagnose2.
    the Flask backend. **Never** expose the Supabase anon URL/key to the browser
    without first re-enabling RLS and writing policies.
 
-3. **Scan endpoints are unauthenticated.** `POST /api/scan` and
-   `/api/scan/confirm` accept requests without a JWT (so the kiosk works). They
-   are effectively open to anyone who knows the URL. Consider a shared device
-   token, IP allowlist, or rate limiting before treating the API as public.
+3. **Scan endpoints require login** (since 2026-10). `POST /api/scan` and
+   `/api/scan/confirm` need a JWT of any role. The gate device logs in with a
+   `scanner` account, whose token lasts 18 hours so one morning login covers the
+   day. `/api/test-scan` only works with `FLASK_DEBUG=1`.
 
 4. **Default secrets.** `JWT_SECRET` defaults to a known string and
    `ADMIN_REGISTER_SECRET` defaults to empty. Ensure both are set to strong random

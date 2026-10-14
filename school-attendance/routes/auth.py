@@ -20,6 +20,9 @@ def token_required(f):
         payload = auth_service.decode_token(token)
         if payload is None:
             return jsonify({"error": "Token is invalid or expired"}), 401
+        # Staff app sessions use their own secret, but never let one through here.
+        if payload.get("typ") == "staff":
+            return jsonify({"error": "Staff sessions cannot access admin endpoints"}), 401
         g.admin_id = payload["sub"]
         g.username = payload["username"]
         g.role     = payload.get("role", "admin")
