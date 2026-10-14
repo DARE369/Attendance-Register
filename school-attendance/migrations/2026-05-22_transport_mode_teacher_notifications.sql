@@ -7,7 +7,9 @@ ALTER TABLE students
   ADD COLUMN IF NOT EXISTS group_tag       TEXT;
 
 ALTER TABLE students
-  ADD CONSTRAINT IF NOT EXISTS students_transport_mode_check
+  DROP CONSTRAINT IF EXISTS students_transport_mode_check;
+ALTER TABLE students
+  ADD CONSTRAINT students_transport_mode_check
   CHECK (transport_mode IN ('parent_drop', 'school_bus', 'self'));
 
 -- 2. Teachers: assigned class + scan notification opt-in

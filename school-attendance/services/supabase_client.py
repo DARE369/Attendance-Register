@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from time import sleep
 from typing import Optional
 
@@ -13,27 +13,31 @@ def _base_url() -> str:
     return f"{Config.SUPABASE_URL.rstrip('/')}/rest/v1"
 
 
-def _headers(single: bool = False) -> dict:
+def _headers(single: bool = False, strict_insert: bool = False) -> dict:
     api_key = Config.SUPABASE_SERVICE_ROLE_KEY
     headers = {
         "apikey": api_key,
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Prefer": "return=representation,resolution=merge-duplicates",
+        # merge-duplicates turns every POST into an upsert on the primary key.
+        "Prefer": "return=representation" if strict_insert
+                  else "return=representation,resolution=merge-duplicates",
     }
     if single:
         headers["Accept"] = "application/vnd.pgrst.object+json"
     return headers
 
 
-def _request(method: str, table: str, *, params: dict | None = None, json: object | None = None, single: bool = False):
+def _request(method: str, table: str, *, params: dict | None = None, json: object | None = None,
+             single: bool = False, strict_insert: bool = False):
+    """strict_insert: a POST that hits an existing key fails (409) instead of overwriting it."""
     response = None
     for attempt in range(3):
         try:
             response = requests.request(
                 method,
                 f"{_base_url()}/{table}",
-                headers=_headers(single=single),
+                headers=_headers(single=single, strict_insert=strict_insert),
                 params=params,
                 json=json,
                 timeout=30,
@@ -642,3 +646,275 @@ def update_student_group(group_id: str, data: dict) -> dict:
 
 def delete_student_group(group_id: str) -> None:
     _request("DELETE", "student_groups", params={"id": _eq(group_id)})
+
+
+# ---------------------------------------------------------------------------
+# Staff mobile sign-in  (migrations/2026-10_staff_mobile_signin.sql)
+#
+# Expiry and audit timestamps on these tables are true UTC (aware ISO strings),
+# because they are compared with now() in the database and never shown as
+# wall-clock times. Attendance times still use naive Lagos time (services.tz).
+# ---------------------------------------------------------------------------
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _like_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("*", "\\*")
+
+
+def get_teacher(teacher_id: str) -> Optional[dict]:
+    return _request(
+        "GET", "teachers",
+        params={"select": "*", "teacher_id": _eq(teacher_id)},
+        single=True,
+    )
+
+
+def get_active_teacher_by_email(email: str) -> Optional[dict]:
+    """Case-insensitive exact match on an active staff member's email."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    rows = _request(
+        "GET", "teachers",
+        params={"select": "*", "email": f"ilike.{_like_escape(email)}", "is_active": "eq.true"},
+    ) or []
+    # ilike is only a pre-filter; never trust it for identity.
+    matches = [r for r in rows if (r.get("email") or "").strip().lower() == email]
+    return matches[0] if len(matches) == 1 else None
+
+
+def get_teacher_logs_for_teacher(teacher_id: str, start_date: str, end_date: str) -> list[dict]:
+    return _request(
+        "GET", "teacher_attendance_logs",
+        params=[
+            ("select", "*"),
+            ("teacher_id", _eq(teacher_id)),
+            ("scan_date", f"gte.{start_date}"),
+            ("scan_date", f"lte.{end_date}"),
+            ("order", "scan_date.desc"),
+        ],
+    ) or []
+
+
+# ── Passkeys ─────────────────────────────────────────────────────────────────
+
+def get_passkey(credential_id: str) -> Optional[dict]:
+    return _request(
+        "GET", "staff_passkeys",
+        params={"select": "*", "credential_id": _eq(credential_id)},
+        single=True,
+    )
+
+
+def get_passkeys_for_teacher(teacher_id: str) -> list[dict]:
+    return _request(
+        "GET", "staff_passkeys",
+        params={"select": "*", "teacher_id": _eq(teacher_id), "order": "created_at.desc"},
+    ) or []
+
+
+def get_passkeys_by_install(install_id: str) -> list[dict]:
+    """Passkeys created from one app install; more than one teacher means a shared phone."""
+    return _request(
+        "GET", "staff_passkeys",
+        params={"select": "credential_id,teacher_id,status", "install_id": _eq(install_id)},
+    ) or []
+
+
+def insert_passkey(data: dict) -> dict:
+    result = _request("POST", "staff_passkeys", json=data, strict_insert=True)
+    return result[0]
+
+
+def update_passkey(credential_id: str, data: dict) -> dict:
+    result = _request("PATCH", "staff_passkeys",
+                      params={"credential_id": _eq(credential_id)}, json=data)
+    return result[0] if result else {}
+
+
+def revoke_active_passkeys(teacher_id: str) -> list[dict]:
+    return _request(
+        "PATCH", "staff_passkeys",
+        params={"teacher_id": _eq(teacher_id), "status": "eq.active"},
+        json={"status": "revoked", "revoked_at": _utc_now_iso()},
+    ) or []
+
+
+# ── Login and setup codes ────────────────────────────────────────────────────
+
+def insert_login_code(data: dict) -> dict:
+    result = _request("POST", "staff_login_codes", json=data, strict_insert=True)
+    return result[0]
+
+
+def get_open_login_codes(teacher_id: str) -> list[dict]:
+    """Unused, unexpired codes for this staff member, newest first."""
+    return _request(
+        "GET", "staff_login_codes",
+        params={
+            "select": "*",
+            "teacher_id": _eq(teacher_id),
+            "used_at": "is.null",
+            "expires_at": f"gt.{_utc_now_iso()}",
+            "order": "created_at.desc",
+        },
+    ) or []
+
+
+def count_login_codes_since(teacher_id: str, since_iso: str) -> int:
+    rows = _request(
+        "GET", "staff_login_codes",
+        params={"select": "id", "teacher_id": _eq(teacher_id), "created_at": f"gte.{since_iso}"},
+    ) or []
+    return len(rows)
+
+
+def update_login_code(code_id: str, data: dict) -> dict:
+    result = _request("PATCH", "staff_login_codes", params={"id": _eq(code_id)}, json=data)
+    return result[0] if result else {}
+
+
+def consume_login_code(code_id: str) -> bool:
+    """Mark a code used. False if it was already used or has expired (another request won)."""
+    result = _request(
+        "PATCH", "staff_login_codes",
+        params={"id": _eq(code_id), "used_at": "is.null", "expires_at": f"gt.{_utc_now_iso()}"},
+        json={"used_at": _utc_now_iso()},
+    )
+    return bool(result)
+
+
+# ── Passkey challenges (single use) ──────────────────────────────────────────
+
+def insert_challenge(data: dict) -> dict:
+    result = _request("POST", "staff_challenges", json=data, strict_insert=True)
+    return result[0]
+
+
+def consume_challenge(challenge: str, purpose: str) -> Optional[dict]:
+    """
+    Atomically mark a challenge used. Returns the row only if it existed for this
+    purpose, was unused and unexpired; None otherwise (replay, expiry, wrong purpose).
+    """
+    result = _request(
+        "PATCH", "staff_challenges",
+        params={
+            "challenge": _eq(challenge),
+            "purpose": _eq(purpose),
+            "used_at": "is.null",
+            "expires_at": f"gt.{_utc_now_iso()}",
+        },
+        json={"used_at": _utc_now_iso()},
+    )
+    return result[0] if result else None
+
+
+def delete_expired_challenges() -> None:
+    _request("DELETE", "staff_challenges", params={"expires_at": f"lt.{_utc_now_iso()}"})
+
+
+# ── Campus zones and survey points ───────────────────────────────────────────
+
+def get_active_zones() -> list[dict]:
+    """Circles of the newest active zone version (empty if none drawn yet)."""
+    latest = _request(
+        "GET", "campus_zones",
+        params={"select": "version", "is_active": "eq.true", "order": "version.desc", "limit": "1"},
+    ) or []
+    if not latest:
+        return []
+    return _request(
+        "GET", "campus_zones",
+        params={"select": "*", "version": _eq(latest[0]["version"]), "is_active": "eq.true",
+                "order": "name.asc"},
+    ) or []
+
+
+def get_latest_zone_version() -> int:
+    rows = _request(
+        "GET", "campus_zones",
+        params={"select": "version", "order": "version.desc", "limit": "1"},
+    ) or []
+    return rows[0]["version"] if rows else 0
+
+
+def insert_zones(zones: list[dict]) -> list[dict]:
+    return _request("POST", "campus_zones", json=zones, strict_insert=True) or []
+
+
+def deactivate_zones_before(version: int) -> None:
+    _request("PATCH", "campus_zones",
+             params={"version": f"lt.{version}", "is_active": "eq.true"},
+             json={"is_active": False})
+
+
+def get_survey_points(limit: int = 200) -> list[dict]:
+    return _request(
+        "GET", "campus_survey_points",
+        params={"select": "*", "order": "created_at.desc", "limit": str(limit)},
+    ) or []
+
+
+def insert_survey_point(data: dict) -> dict:
+    result = _request("POST", "campus_survey_points", json=data, strict_insert=True)
+    return result[0]
+
+
+# ── Correction requests ──────────────────────────────────────────────────────
+
+def insert_correction(data: dict) -> dict:
+    result = _request("POST", "attendance_corrections", json=data, strict_insert=True)
+    return result[0]
+
+
+def get_corrections(teacher_id: Optional[str] = None, status: Optional[str] = None,
+                    limit: int = 100) -> list[dict]:
+    params = [
+        ("select", "*,teachers(full_name,staff_type)"),
+        ("order", "created_at.asc" if status == "pending" else "created_at.desc"),
+        ("limit", str(limit)),
+    ]
+    if teacher_id:
+        params.append(("teacher_id", _eq(teacher_id)))
+    if status:
+        params.append(("status", _eq(status)))
+    return _request("GET", "attendance_corrections", params=params) or []
+
+
+def get_correction(correction_id: str) -> Optional[dict]:
+    return _request(
+        "GET", "attendance_corrections",
+        params={"select": "*", "id": _eq(correction_id)},
+        single=True,
+    )
+
+
+def update_correction_if_pending(correction_id: str, data: dict) -> Optional[dict]:
+    """Decide a correction once. None if someone already reviewed it."""
+    result = _request(
+        "PATCH", "attendance_corrections",
+        params={"id": _eq(correction_id), "status": "eq.pending"},
+        json=data,
+    )
+    return result[0] if result else None
+
+
+# ── Reminders ────────────────────────────────────────────────────────────────
+
+def mark_reminder_sent(teacher_id: str, scan_date: str, kind: str) -> bool:
+    """
+    Record a reminder. False if one was already recorded for this staff member,
+    day and kind (primary-key conflict), so callers send at most one.
+    """
+    try:
+        _request("POST", "staff_reminders_sent",
+                 json={"teacher_id": teacher_id, "scan_date": scan_date, "kind": kind},
+                 strict_insert=True)
+        return True
+    except RuntimeError as exc:
+        if "409" in str(exc) or "23505" in str(exc):
+            return False
+        raise

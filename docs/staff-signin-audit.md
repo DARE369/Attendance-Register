@@ -37,6 +37,16 @@ Audit date: 2026-10-14. Compares `docs/staff-signin-plan.md` with the code on di
 - `/api/scan` and `/api/scan/confirm` require login; scanner tokens last 18 h.
 - 34 tests passing.
 
+## 3b. Session 1 status (database)
+
+- `migrations/2026-10_staff_mobile_signin.sql`: 7 new tables (no `app_settings`; settings seeded into `school_settings`), new columns on `teachers` and `teacher_attendance_logs`, review-inbox and rate-limit indexes, RLS on for new tables.
+- Database-enforced rules: one active passkey per staff member (partial unique index), accuracy limit 10–100 m, zone radius 20–500 m.
+- `full_schema.sql` now also contains the four May 2026 migrations it was missing, so a fresh install works again. The May transport-mode migration used `ADD CONSTRAINT IF NOT EXISTS`, which Postgres rejects; fixed in both files.
+- Verified in a throwaway Postgres: fresh install, re-run, and the staff migration on its own all succeed.
+- `services/supabase_client.py` helpers for every new table. **All inserts into new tables use `strict_insert=True`.** The client's default `Prefer: resolution=merge-duplicates` turns every POST into an upsert on the primary key, which would silently break reminder de-duplication and let a phone overwrite another staff member's passkey row.
+- Email lookup escapes LIKE wildcards and requires an exact match (`a_b@x` must not match `axb@x`).
+- Production snapshot (2026-10-14): 18 active staff, 16 with an email (2 need an email added or an admin setup code), 0 staff attendance records, RLS off on every existing table.
+
 ## 4. UX amendments (staff app)
 
 The goal is: **open the app, see green, tap, touch the fingerprint sensor. One touch a day.**
