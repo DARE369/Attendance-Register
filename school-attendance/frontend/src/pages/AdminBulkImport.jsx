@@ -172,7 +172,7 @@ function UploadBtn({ uploading, disabled, onClick }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function AdminBulkImport() {
+export default function AdminBulkImport({ isEmbedded = false }) {
   const [activeTab, setActiveTab] = useState('students');
 
   // Students state
@@ -191,10 +191,18 @@ export default function AdminBulkImport() {
   const [teacherError,  setTeacherError] = useState(null);
   const [showTeacherFmt, setShowTeacherFmt] = useState(false);
 
+  const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
   // ── Student handlers ────────────────────────────────────────────────────────
 
   const handleStudentFile = (e) => {
-    setStudentFile(e.target.files?.[0] ?? null);
+    const file = e.target.files?.[0] ?? null;
+    if (file && file.size > MAX_FILE_BYTES) {
+      toast.error('File is too large — maximum size is 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setStudentFile(file);
     setStudentResult(null);
     setStudentError(null);
   };
@@ -236,7 +244,13 @@ export default function AdminBulkImport() {
   // ── Teacher handlers ────────────────────────────────────────────────────────
 
   const handleTeacherFile = (e) => {
-    setTeacherFile(e.target.files?.[0] ?? null);
+    const file = e.target.files?.[0] ?? null;
+    if (file && file.size > MAX_FILE_BYTES) {
+      toast.error('File is too large — maximum size is 5 MB.');
+      e.target.value = '';
+      return;
+    }
+    setTeacherFile(file);
     setTeacherResult(null);
     setTeacherError(null);
   };
@@ -277,11 +291,8 @@ export default function AdminBulkImport() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-      <AppHeader subtitle="Bulk Import" />
-
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+  const inner = (
+    <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Tab switcher */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-1.5 flex gap-1">
@@ -493,7 +504,15 @@ export default function AdminBulkImport() {
           </>
         )}
 
-      </main>
+    </div>
+  );
+
+  if (isEmbedded) return inner;
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <AppHeader subtitle="Bulk Import" />
+      <main className="px-4 py-8">{inner}</main>
     </div>
   );
 }

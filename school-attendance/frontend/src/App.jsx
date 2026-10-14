@@ -3,11 +3,6 @@ import { Toaster } from 'react-hot-toast';
 import LoginPage      from './pages/LoginPage';
 import ScannerPage    from './pages/ScannerPage';
 import AdminDashboard from './pages/AdminDashboard';
-import AdminBulkImport from './pages/AdminBulkImport';
-import TemplateCustomization from './pages/TemplateCustomization';
-import StudentManagement from './pages/StudentManagement';
-import TeacherManagement from './pages/TeacherManagement';
-import StaffTypeConfig    from './pages/StaffTypeConfig';
 
 function getRole() {
   try { return JSON.parse(localStorage.getItem('admin') || '{}').role || 'admin'; }
@@ -39,14 +34,15 @@ export default function App() {
         }}
       />
       <Routes>
-        <Route path="/login"      element={<LoginPage />} />
-        <Route path="/scanner"    element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
-        <Route path="/dashboard"  element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
-        <Route path="/import"     element={<PrivateRoute adminOnly><AdminBulkImport /></PrivateRoute>} />
-        <Route path="/templates"  element={<PrivateRoute adminOnly><TemplateCustomization /></PrivateRoute>} />
-        <Route path="/students"   element={<PrivateRoute adminOnly><StudentManagement /></PrivateRoute>} />
-        <Route path="/teachers"   element={<PrivateRoute adminOnly><TeacherManagement /></PrivateRoute>} />
-        <Route path="/staff-types" element={<PrivateRoute adminOnly><StaffTypeConfig /></PrivateRoute>} />
+        <Route path="/login"     element={<LoginPage />} />
+        <Route path="/scanner"   element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
+        <Route path="/dashboard" element={<PrivateRoute adminOnly><AdminDashboard /></PrivateRoute>} />
+        {/* Redirect old standalone routes to the unified dashboard */}
+        <Route path="/import"     element={<PrivateRoute adminOnly><Navigate to="/dashboard" replace /></PrivateRoute>} />
+        <Route path="/templates"  element={<PrivateRoute adminOnly><Navigate to="/dashboard" replace /></PrivateRoute>} />
+        <Route path="/students"   element={<PrivateRoute adminOnly><Navigate to="/dashboard" replace /></PrivateRoute>} />
+        <Route path="/teachers"   element={<PrivateRoute adminOnly><Navigate to="/dashboard" replace /></PrivateRoute>} />
+        <Route path="/staff-types" element={<PrivateRoute adminOnly><Navigate to="/dashboard" replace /></PrivateRoute>} />
         <Route path="*"           element={<DefaultRedirect />} />
       </Routes>
     </BrowserRouter>

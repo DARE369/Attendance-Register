@@ -7,7 +7,8 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 
 holidays_bp = Blueprint("holidays", __name__)
@@ -30,7 +31,7 @@ def _validate_date(value: str) -> bool:
 # ---------------------------------------------------------------------------
 
 @holidays_bp.get("/holidays")
-@token_required
+@_admin_required
 def list_holidays():
     try:
         rows = db.get_holidays(active_only=False)
@@ -45,7 +46,7 @@ def list_holidays():
 # ---------------------------------------------------------------------------
 
 @holidays_bp.post("/holidays")
-@token_required
+@_admin_required
 def add_holiday():
     body = request.get_json(silent=True) or {}
     name         = (body.get("holiday_name")    or "").strip()
@@ -92,7 +93,7 @@ def add_holiday():
 # ---------------------------------------------------------------------------
 
 @holidays_bp.patch("/holidays/<holiday_id>")
-@token_required
+@_admin_required
 def update_holiday(holiday_id):
     body = request.get_json(silent=True) or {}
     allowed = {"is_active", "holiday_name", "description"}
@@ -112,7 +113,7 @@ def update_holiday(holiday_id):
 # ---------------------------------------------------------------------------
 
 @holidays_bp.delete("/holidays/<holiday_id>")
-@token_required
+@_admin_required
 def delete_holiday(holiday_id):
     try:
         db.delete_holiday(holiday_id)

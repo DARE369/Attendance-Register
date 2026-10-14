@@ -5,7 +5,8 @@ import logging
 from datetime import date as _date, timedelta
 from flask import Blueprint, jsonify, request, make_response
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 from services import pdf_service
 from routes.admin import _build_dashboard
@@ -40,7 +41,7 @@ _TEMPLATES = [
 # ---------------------------------------------------------------------------
 
 @reports_bp.get("/reports/templates")
-@token_required
+@_admin_required
 def list_templates():
     try:
         saved = db.get_report_templates()
@@ -62,7 +63,7 @@ def list_templates():
 
 
 @reports_bp.patch("/reports/templates/<template_key>")
-@token_required
+@_admin_required
 def update_template_settings(template_key: str):
     from flask import g
     body = request.get_json(silent=True) or {}
@@ -83,7 +84,7 @@ def update_template_settings(template_key: str):
 # ---------------------------------------------------------------------------
 
 @reports_bp.post("/reports/generate")
-@token_required
+@_admin_required
 def generate_report():
     body         = request.get_json(silent=True) or {}
     template_key = body.get("template", "daily_summary")

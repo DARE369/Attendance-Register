@@ -1,7 +1,6 @@
 import logging
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
@@ -10,7 +9,8 @@ from services.attendance_service import process_scan
 from services import notification_service
 from services.teacher_attendance_service import process_teacher_scan
 from services import supabase_client as db
-from services.holiday_service import is_school_day, is_weekend, is_holiday
+from services.holiday_service import get_day_scan_status, STATUS_OPEN, STATUS_WEEKEND, STATUS_HOLIDAY, STATUS_BLOCKED, STATUS_OVERRIDE
+from services import tz as _tz
 
 scan_bp = Blueprint("scan", __name__)
 logger = logging.getLogger("scan")
@@ -19,11 +19,10 @@ _BARCODE_RE = re.compile(r"^[A-Z0-9\-_]{1,20}$")
 
 
 def _now() -> datetime:
-    return datetime.now()
+    return _tz.now()
 
 
 def _validate_barcode(barcode: str) -> str | None:
-    """Returns an error string if invalid, else None."""
     if not barcode:
         return "Barcode is required"
     if not _BARCODE_RE.match(barcode):
@@ -31,21 +30,38 @@ def _validate_barcode(barcode: str) -> str | None:
     return None
 
 
-def _resolve_scan_target(barcode: str) -> tuple[dict | None, bool]:
-    """
-    Lookup teacher and student records in parallel.
-    Returns (record, is_teacher). record is None if barcode matches nothing.
-    """
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        ft = pool.submit(db.get_teacher_by_barcode, barcode)
-        fs = pool.submit(db.get_student, barcode)
-        teacher = ft.result()
-        student = fs.result()
-    if teacher:
-        return teacher, True
-    if student:
-        return student, False
-    return None, False
+def _check_day_status() -> dict | None:
+    """Returns a ready-made error response if scanning is blocked today, else None."""
+    today = _now().strftime("%Y-%m-%d")
+    day_status = get_day_scan_status(today)
+    if day_status == STATUS_WEEKEND:
+        return {"status": "holiday", "message": "School is closed today (weekend). Scan not recorded."}
+    if day_status == STATUS_HOLIDAY:
+        return {"status": "holiday", "message": "School is closed today (public holiday). Scan not recorded."}
+    if day_status == STATUS_BLOCKED:
+        return {"status": "holiday", "message": "Scanning has been disabled by admin for today. Scan not recorded."}
+    return None
+
+
+def _person_summary(record: dict, person_type: str) -> dict:
+    """Produce a compact dict for disambiguation display."""
+    if person_type == "teacher":
+        return {
+            "type":       "teacher",
+            "id":         record.get("teacher_id"),
+            "barcode":    record.get("barcode_id"),
+            "name":       record.get("full_name", "Unknown"),
+            "staff_type": record.get("staff_type", ""),
+            "phone":      record.get("phone", ""),
+        }
+    return {
+        "type":         "student",
+        "id":           record.get("student_id"),
+        "barcode":      record.get("student_id"),
+        "name":         record.get("full_name", "Unknown"),
+        "class_name":   record.get("class", ""),
+        "parent_phone": record.get("parent_phone", ""),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -54,47 +70,41 @@ def _resolve_scan_target(barcode: str) -> tuple[dict | None, bool]:
 
 @scan_bp.post("/scan")
 def handle_scan():
-    """
-    Body:
-        { "barcode": "STU001", "entry_point": "main_gate" }
-
-    Returns scan result with action, student details, comments, message.
-    No JWT required — the scanner is a trusted on-site device.
-    """
     body = request.get_json(silent=True) or {}
     barcode = (body.get("barcode") or "").strip().upper()
     entry_point = (body.get("entry_point") or "main_gate").strip()
 
     error = _validate_barcode(barcode)
     if error:
-        logger.warning("[INVALID] barcode=%r entry_point=%s — %s", barcode, entry_point, error)
-        return jsonify({
-            "status": "error",
-            "error": error,
-            "message": "Please provide a valid barcode",
-        }), 400
+        logger.warning("[INVALID] barcode=%r — %s", barcode, error)
+        return jsonify({"status": "error", "error": error, "message": "Please provide a valid barcode"}), 400
 
-    # Weekend / holiday guard
-    today = _now().strftime("%Y-%m-%d")
-    if is_weekend(today):
-        return jsonify({
-            "status": "holiday",
-            "message": "School is closed today (weekend). Scan not recorded.",
-        }), 200
-    if is_holiday(today):
-        return jsonify({
-            "status": "holiday",
-            "message": "School is closed today (public holiday). Scan not recorded.",
-        }), 200
+    blocked = _check_day_status()
+    if blocked:
+        return jsonify(blocked), 200
 
     logger.info("[REQUEST] barcode=%s entry_point=%s", barcode, entry_point)
 
-    record, is_teacher = _resolve_scan_target(barcode)
+    teacher, student = db.get_both_by_barcode(barcode)
     now = _now()
-    if is_teacher:
-        result = process_teacher_scan(barcode, now, teacher=record)
-    elif record is not None:
-        result = process_scan(barcode, now, entry_point, student=record)
+
+    # Conflict — both a teacher and a student share this barcode
+    if teacher and student:
+        logger.warning("[AMBIGUOUS] barcode=%s matches teacher=%s and student=%s",
+                       barcode, teacher.get("name"), student.get("name"))
+        return jsonify({
+            "status": "ambiguous",
+            "message": "This ID belongs to two people. Please select the correct person.",
+            "matches": [
+                _person_summary(teacher, "teacher"),
+                _person_summary(student, "student"),
+            ],
+        }), 200
+
+    if teacher:
+        result = process_teacher_scan(barcode, now, teacher=teacher)
+    elif student:
+        result = process_scan(barcode, now, entry_point, student=student)
         if result["status"] == "success":
             threading.Thread(
                 target=_fire_notifications,
@@ -108,6 +118,58 @@ def handle_scan():
             "error": f"ID not found ({barcode})",
             "message": "Barcode not recognised. Please check the ID and try again.",
         }
+
+    status_code = 200 if result["status"] == "success" else 400
+    return jsonify(result), status_code
+
+
+# ---------------------------------------------------------------------------
+# POST /api/scan/confirm  — operator has chosen which person this barcode is
+# ---------------------------------------------------------------------------
+
+@scan_bp.post("/scan/confirm")
+def confirm_scan():
+    """
+    Body:
+        { "barcode": "STU042", "person_type": "student" | "teacher", "entry_point": "main_gate" }
+
+    Called after the disambiguation modal — processes the chosen record.
+    """
+    body = request.get_json(silent=True) or {}
+    barcode      = (body.get("barcode") or "").strip().upper()
+    person_type  = (body.get("person_type") or "").strip().lower()
+    entry_point  = (body.get("entry_point") or "main_gate").strip()
+
+    error = _validate_barcode(barcode)
+    if error:
+        return jsonify({"status": "error", "error": error}), 400
+
+    if person_type not in ("student", "teacher"):
+        return jsonify({"status": "error", "error": "person_type must be 'student' or 'teacher'"}), 400
+
+    blocked = _check_day_status()
+    if blocked:
+        return jsonify(blocked), 200
+
+    now = _now()
+    logger.info("[CONFIRM] barcode=%s person_type=%s entry_point=%s", barcode, person_type, entry_point)
+
+    if person_type == "teacher":
+        teacher = db.get_teacher_by_barcode(barcode)
+        if not teacher:
+            return jsonify({"status": "error", "message": "Teacher record not found"}), 404
+        result = process_teacher_scan(barcode, now, teacher=teacher)
+    else:
+        student = db.get_student(barcode)
+        if not student:
+            return jsonify({"status": "error", "message": "Student record not found"}), 404
+        result = process_scan(barcode, now, entry_point, student=student)
+        if result["status"] == "success":
+            threading.Thread(
+                target=_fire_notifications,
+                args=(barcode, result["action"], result.get("comments"), result["timestamp"]),
+                daemon=True,
+            ).start()
 
     status_code = 200 if result["status"] == "success" else 400
     return jsonify(result), status_code
@@ -128,42 +190,40 @@ def _fire_notifications(student_id: str, log_type: str, comments, timestamp: str
 
 @scan_bp.get("/test-scan")
 def test_scan():
-    """
-    Convenience endpoint for testing without a physical scanner.
-    Accepts an optional ?time=HH:MM parameter to simulate different clock times.
-
-    Examples:
-        GET /api/test-scan?barcode=STU001
-        GET /api/test-scan?barcode=STU001&time=08:30   → forces 08:30 today
-        GET /api/test-scan?barcode=STU001&time=14:00   → forces 14:00 today
-    """
     barcode = (request.args.get("barcode") or "").strip().upper()
     error = _validate_barcode(barcode)
     if error:
         return jsonify({"status": "error", "error": error}), 400
 
-    # Optional clock override for testing time windows
     time_override = request.args.get("time", "").strip()
     if time_override:
         try:
             h, m = map(int, time_override.split(":"))
             now = _now().replace(hour=h, minute=m, second=0, microsecond=0)
         except ValueError:
-            return jsonify({
-                "status": "error",
-                "error": "Invalid ?time= format. Use HH:MM (e.g. 08:30)",
-            }), 400
+            return jsonify({"status": "error", "error": "Invalid ?time= format. Use HH:MM"}), 400
     else:
         now = _now()
 
     entry_point = request.args.get("entry_point", "test").strip()
     logger.info("[TEST-SCAN] barcode=%s time=%s", barcode, now.strftime("%H:%M"))
 
-    record, is_teacher = _resolve_scan_target(barcode)
-    if is_teacher:
-        result = process_teacher_scan(barcode, now, teacher=record)
-    elif record is not None:
-        result = process_scan(barcode, now, entry_point, student=record)
+    teacher, student = db.get_both_by_barcode(barcode)
+
+    if teacher and student:
+        return jsonify({
+            "status": "ambiguous",
+            "message": "This ID belongs to two people. Please select the correct person.",
+            "matches": [
+                _person_summary(teacher, "teacher"),
+                _person_summary(student, "student"),
+            ],
+        }), 200
+
+    if teacher:
+        result = process_teacher_scan(barcode, now, teacher=teacher)
+    elif student:
+        result = process_scan(barcode, now, entry_point, student=student)
     else:
         result = {
             "status": "error",

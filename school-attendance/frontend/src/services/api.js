@@ -42,6 +42,9 @@ export const deleteAdmin     = (id)     => api.delete(`/api/admin/admins/${id}`)
 export const scanBarcode = (barcode) =>
   api.post('/api/scan', { barcode, entry_point: 'main_gate' });
 
+export const confirmScan = (barcode, personType) =>
+  api.post('/api/scan/confirm', { barcode, person_type: personType, entry_point: 'main_gate' });
+
 // ── Admin dashboard ───────────────────────────────────────────────────────────
 export const getDashboard = (date) =>
   api.get('/api/admin/dashboard', {
@@ -85,8 +88,9 @@ export const getTemplates    = ()          => api.get('/api/admin/templates');
 export const updateTemplate  = (key, body) => api.post(`/api/admin/templates/${key}`, body);
 
 // ── Notification settings ─────────────────────────────────────────────────────
-export const getSettings  = ()       => api.get('/api/admin/settings');
-export const saveSettings = (body)   => api.post('/api/admin/settings', body);
+export const getSettings      = ()       => api.get('/api/admin/settings');
+export const saveSettings     = (body)   => api.post('/api/admin/settings', body);
+export const testWhatsApp     = (phone)  => api.post('/api/admin/settings/test-whatsapp', { phone });
 
 // ── Student management ────────────────────────────────────────────────────────
 export const getStudents    = ()                   => api.get('/api/admin/students');
@@ -135,6 +139,22 @@ export const deleteHoliday  = (id)               => api.delete(`/api/admin/holid
 // ── Fraud alerts ──────────────────────────────────────────────────────────────
 export const getFraudAlerts   = (params = {})     => api.get('/api/admin/fraud-alerts', { params });
 export const updateFraudAlert = (id, body)         => api.patch(`/api/admin/fraud-alerts/${id}`, body);
+
+// ── Scan day overrides ────────────────────────────────────────────────────────
+export const getScanOverrides   = (params = {})   => api.get('/api/admin/scan-overrides', { params });
+export const upsertScanOverride = (body)           => api.post('/api/admin/scan-overrides', body);
+export const deleteScanOverride = (date)           => api.delete(`/api/admin/scan-overrides/${date}`);
+export const getScanDayStatus   = (date)           => api.get('/api/admin/scan-day-status', { params: { date } });
+
+// ── School settings (configurable time windows) ───────────────────────────────
+export const getSchoolSettings    = ()     => api.get('/api/admin/school-settings');
+export const updateSchoolSettings = (body) => api.put('/api/admin/school-settings', body);
+
+// ── Student groups ────────────────────────────────────────────────────────────
+export const getStudentGroups    = ()            => api.get('/api/admin/student-groups');
+export const createStudentGroup  = (body)        => api.post('/api/admin/student-groups', body);
+export const updateStudentGroup  = (id, body)    => api.put(`/api/admin/student-groups/${id}`, body);
+export const deleteStudentGroup  = (id)          => api.delete(`/api/admin/student-groups/${id}`);
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 export const getAnalytics = (start, end) =>

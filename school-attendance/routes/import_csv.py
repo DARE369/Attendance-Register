@@ -2,7 +2,8 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import csv_service
 
 import_bp = Blueprint("import_csv", __name__)
@@ -10,7 +11,7 @@ logger   = logging.getLogger("import")
 
 
 @import_bp.post("/import-csv")
-@token_required
+@_admin_required
 def import_csv():
     """
     Multipart POST — fields:

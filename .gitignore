@@ -9,3 +9,6 @@ __pycache__/
 logs/
 .claude/
 .env.local
+
+# Real pupil/parent data exports: never commit (repo is public)
+/LPS_*.csv

@@ -3,35 +3,46 @@ import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import crestLogo from '../assets/Picture1.png';
 
-import SummaryCards    from '../components/SummaryCards';
-import AttendanceLog   from '../components/AttendanceLog';
+import SummaryCards        from '../components/SummaryCards';
+import AttendanceLog       from '../components/AttendanceLog';
 import AuditLogs           from '../components/AuditLogs';
 import HolidayManager      from '../components/HolidayManager';
 import FraudAlertsPanel    from '../components/FraudAlertsPanel';
 import AnalyticsPanel      from '../components/AnalyticsPanel';
 import ReportsPanel        from '../components/ReportsPanel';
 import NotificationSettings from '../components/NotificationSettings';
+import ScanOverridesManager from '../components/ScanOverridesManager';
+import SchoolSettingsPanel  from '../components/SchoolSettingsPanel';
 import StudentManagement   from './StudentManagement';
 import TeacherManagement   from './TeacherManagement';
 import StaffTypeConfig     from './StaffTypeConfig';
 import AdminProfile        from './AdminProfile';
+import AdminBulkImport     from './AdminBulkImport';
+import TemplateCustomization from './TemplateCustomization';
+import StudentGroupsManager  from '../components/StudentGroupsManager';
 
 import { getDashboard, exportCSV } from '../services/api';
 
-const POLL_INTERVAL  = 5000;   // normal refresh cadence
-const BACKOFF_MAX_MS = 30_000; // longest we'll wait after repeated failures
+const POLL_INTERVAL  = 10_000;
+const BACKOFF_MAX_MS = 30_000;
 
 const TABS = [
-  { id: 'dashboard',    label: 'Dashboard',    icon: ChartIcon },
-  { id: 'analytics',   label: 'Analytics',    icon: AnalyticsIcon },
-  { id: 'reports',     label: 'Reports',      icon: ReportsIcon },
-  { id: 'students',    label: 'Students',     icon: StudentsIcon },
-  { id: 'teachers',    label: 'Teachers',     icon: TeacherIcon },
-  { id: 'staff-config', label: 'Staff Config', icon: ConfigIcon },
-  { id: 'holidays',    label: 'Holidays',     icon: HolidayIcon },
-  { id: 'fraud',       label: 'Fraud Alerts', icon: FraudIcon },
-  { id: 'audit',       label: 'Audit Logs',   icon: AuditIcon },
-  { id: 'profile',     label: 'Profile',      icon: ProfileIcon },
+  { id: 'dashboard',     label: 'Dashboard',    icon: ChartIcon },
+  { id: 'analytics',     label: 'Analytics',    icon: AnalyticsIcon },
+  { id: 'reports',       label: 'Reports',      icon: ReportsIcon },
+  { id: 'students',      label: 'Students',     icon: StudentsIcon },
+  { id: 'teachers',      label: 'Teachers',     icon: TeacherIcon },
+  { id: 'staff-config',  label: 'Staff Config', icon: ConfigIcon },
+  { id: 'holidays',      label: 'Holidays',     icon: HolidayIcon },
+  { id: 'scan-overrides', label: 'Scan Control', icon: ScanControlIcon },
+  { id: 'fraud',         label: 'Fraud Alerts', icon: FraudIcon },
+  { id: 'audit',         label: 'Audit Logs',   icon: AuditIcon },
+  { id: 'import',        label: 'Import',       icon: ImportIcon },
+  { id: 'templates',     label: 'Templates',    icon: TemplatesIcon },
+  { id: 'time-windows',  label: 'Time Windows', icon: ClockIcon },
+  { id: 'notifications',  label: 'Notifications',   icon: BellIcon },
+  { id: 'student-groups', label: 'Student Groups',  icon: GroupIcon },
+  { id: 'profile',        label: 'Profile',         icon: ProfileIcon },
 ];
 
 // ── "Updated X ago" hook ──────────────────────────────────────────────────────
@@ -64,6 +75,7 @@ export default function AdminDashboard() {
     mountedTabs.current.add(id);
     setActiveTab(id);
   }, []);
+
   const [data,         setData]         = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [lastUpdated,  setLastUpdated]  = useState(null);
@@ -72,9 +84,7 @@ export default function AdminDashboard() {
     () => new Date().toISOString().split('T')[0]
   );
   const [exporting,    setExporting]    = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [retryCount,   setRetryCount]   = useState(0);
-  const [connecting,   setConnecting]   = useState(true);
 
   const ago = useAgo(lastUpdated);
 
@@ -96,7 +106,6 @@ export default function AdminDashboard() {
         setData(res);
         setLastUpdated(new Date());
         setLoading(false);
-        setConnecting(false);
         setRetryCount(0);
         fails = 0;
         timerId = setTimeout(poll, POLL_INTERVAL);
@@ -105,14 +114,12 @@ export default function AdminDashboard() {
         fails += 1;
         setRetryCount(fails);
         setLoading(false);
-        // Exponential back-off: 5s → 10s → 20s → 30s (cap)
         const delay = Math.min(POLL_INTERVAL * Math.pow(2, fails - 1), BACKOFF_MAX_MS);
         timerId = setTimeout(poll, delay);
       }
     };
 
     setLoading(true);
-    setConnecting(true);
     setRetryCount(0);
     fails = 0;
     poll();
@@ -142,6 +149,7 @@ export default function AdminDashboard() {
       <header className="text-white shadow-lg sticky top-0 z-40"
         style={{ background: 'linear-gradient(to right, #1a3a52, #2d5a7a)' }}>
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+
           {/* Brand */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm shrink-0">
@@ -156,8 +164,8 @@ export default function AdminDashboard() {
           {/* Live badge */}
           {lastUpdated && (
             <div className="hidden md:flex items-center gap-2 text-xs text-blue-200">
-              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              Updated {ago}
+              <span className={`w-2 h-2 rounded-full animate-pulse ${retryCount > 0 ? 'bg-amber-400' : 'bg-green-400'}`} />
+              {retryCount > 0 ? `Reconnecting… attempt ${retryCount}` : `Updated ${ago}`}
             </div>
           )}
 
@@ -179,36 +187,6 @@ export default function AdminDashboard() {
               </svg>
               <span className="hidden sm:inline">Scanner</span>
             </Link>
-            <Link to="/import"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
-                         border border-white/20 rounded-lg text-sm font-semibold transition-colors text-white">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 0L8 8m4-4l4 4" />
-              </svg>
-              <span className="hidden md:inline">Import</span>
-            </Link>
-            <Link to="/templates"
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
-                         border border-white/20 rounded-lg text-sm font-semibold transition-colors text-white">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2
-                     2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              <span className="hidden lg:inline">Templates</span>
-            </Link>
-            <button onClick={() => setShowSettings(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-white/15 hover:bg-white/30
-                         border border-white/20 rounded-lg text-sm font-semibold transition-colors text-white">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0
-                     00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0
-                     .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              <span className="hidden lg:inline">Settings</span>
-            </button>
             {admin.username && (
               <span className="hidden lg:block text-sm text-blue-200 px-2">{admin.username}</span>
             )}
@@ -227,11 +205,11 @@ export default function AdminDashboard() {
       </header>
 
       {/* ── Tab bar ────────────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-200 sticky top-[56px] z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto">
+      <div className="bg-white border-b border-gray-200 sticky top-[64px] z-30 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto scrollbar-none">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => switchTab(id)}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-semibold border-b-2
                           whitespace-nowrap transition-all duration-200 ${
                 activeTab === id
                   ? 'border-blue-600 text-blue-700 bg-blue-50/60'
@@ -270,7 +248,8 @@ export default function AdminDashboard() {
               </div>
             )}
             <SummaryCards summary={data?.summary} teacherSummary={data?.teacher_summary} loading={loading} />
-            <AttendanceLog data={data} loading={loading} selectedDate={selectedDate} onDateChange={setSelectedDate} />
+            <AttendanceLog data={data} loading={loading} selectedDate={selectedDate}
+              onDateChange={setSelectedDate} />
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span className={`w-2 h-2 rounded-full animate-pulse ${
@@ -304,15 +283,21 @@ export default function AdminDashboard() {
 
         {/* All other tabs — lazy mount (mounted on first visit, then kept alive) */}
         {[
-          { id: 'analytics',   el: <AnalyticsPanel isEmbedded /> },
-          { id: 'reports',     el: <ReportsPanel isEmbedded /> },
-          { id: 'students',    el: <StudentManagement isEmbedded /> },
-          { id: 'teachers',    el: <TeacherManagement isEmbedded /> },
-          { id: 'staff-config', el: <StaffTypeConfig isEmbedded /> },
-          { id: 'holidays',    el: <HolidayManager isEmbedded /> },
-          { id: 'fraud',       el: <FraudAlertsPanel isEmbedded /> },
-          { id: 'audit',       el: <AuditLogs isEmbedded /> },
-          { id: 'profile',     el: <AdminProfile isEmbedded /> },
+          { id: 'analytics',     el: <AnalyticsPanel isEmbedded /> },
+          { id: 'reports',       el: <ReportsPanel isEmbedded /> },
+          { id: 'students',      el: <StudentManagement isEmbedded /> },
+          { id: 'teachers',      el: <TeacherManagement isEmbedded /> },
+          { id: 'staff-config',  el: <StaffTypeConfig isEmbedded /> },
+          { id: 'holidays',      el: <HolidayManager isEmbedded /> },
+          { id: 'scan-overrides', el: <ScanOverridesManager /> },
+          { id: 'fraud',         el: <FraudAlertsPanel isEmbedded /> },
+          { id: 'audit',         el: <AuditLogs isEmbedded /> },
+          { id: 'import',        el: <AdminBulkImport isEmbedded /> },
+          { id: 'templates',     el: <TemplateCustomization isEmbedded /> },
+          { id: 'time-windows',  el: <SchoolSettingsPanel /> },
+          { id: 'notifications',  el: <NotificationSettings isEmbedded /> },
+          { id: 'student-groups', el: <StudentGroupsManager /> },
+          { id: 'profile',        el: <AdminProfile isEmbedded /> },
         ].map(({ id, el }) =>
           mountedTabs.current.has(id) ? (
             <div key={id} style={{ display: activeTab === id ? undefined : 'none' }}>
@@ -321,8 +306,6 @@ export default function AdminDashboard() {
           ) : null
         )}
       </main>
-
-      {showSettings && <NotificationSettings onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
@@ -346,6 +329,23 @@ function ChartIcon() {
         d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
            0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0
            0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    </svg>
+  );
+}
+function AnalyticsIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+    </svg>
+  );
+}
+function ReportsIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M9 17v-2m3 2v-4m3 4v-6M4 21h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0
+           00-1 1v15a1 1 0 001 1z" />
     </svg>
   );
 }
@@ -380,22 +380,20 @@ function ConfigIcon() {
     </svg>
   );
 }
-function AuditIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9
-           5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3
-           4h3m-6-4h.01M9 16h.01" />
-    </svg>
-  );
-}
 function HolidayIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0
            00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  );
+}
+function ScanControlIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
     </svg>
   );
 }
@@ -408,20 +406,59 @@ function FraudIcon() {
     </svg>
   );
 }
-function AnalyticsIcon() {
+function AuditIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9
+           5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3
+           4h3m-6-4h.01M9 16h.01" />
     </svg>
   );
 }
-function ReportsIcon() {
+function ImportIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-        d="M9 17v-2m3 2v-4m3 4v-6M4 21h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0
-           00-1 1v15a1 1 0 001 1z" />
+        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 0L8 8m4-4l4 4" />
+    </svg>
+  );
+}
+function TemplatesIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2
+           2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+    </svg>
+  );
+}
+function ClockIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+function BellIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0
+           00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0
+           .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  );
+}
+function GroupIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7
+           20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0
+           0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0
+           11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
     </svg>
   );
 }

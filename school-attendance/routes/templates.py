@@ -2,7 +2,8 @@ import logging
 
 from flask import Blueprint, request, jsonify
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 
 templates_bp = Blueprint("templates", __name__)
@@ -12,7 +13,7 @@ _ALLOWED_FIELDS = {"subject", "body", "updated_at"}
 
 
 @templates_bp.get("/templates")
-@token_required
+@_admin_required
 def get_templates():
     """Return all message templates as a dict keyed by template_key."""
     rows = db.get_all_templates()
@@ -20,7 +21,7 @@ def get_templates():
 
 
 @templates_bp.post("/templates/<key>")
-@token_required
+@_admin_required
 def update_template(key: str):
     """
     Upsert a single template.

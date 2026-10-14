@@ -1,110 +1,173 @@
-const MAX_SCANS = 10;
-
 function formatTime(ts) {
   if (!ts) return '--';
-  const parsed = new Date(ts);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  }
-  const [, timePart] = ts.split(' ');
-  if (!timePart) return ts;
-  const [h, m] = timePart.split(':');
-  const hour = parseInt(h, 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const h12 = hour % 12 || 12;
-  return `${h12}:${m} ${ampm}`;
+  try {
+    const raw = ts.includes('T') ? ts.split('T')[1] : ts.split(' ')[1] ?? ts;
+    const clean = raw.replace(/\+.*|Z/, '');
+    const [h, m] = clean.split(':');
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const h12 = hour % 12 || 12;
+    return `${h12}:${m} ${ampm}`;
+  } catch { return ts; }
 }
 
-function ActionBadge({ action }) {
-  if (!action) return null;
-  const actions = {
-    arrival:   { label: 'ARRIVAL',   cls: 'bg-green-100 text-green-800' },
-    departure: { label: 'DEPARTURE', cls: 'bg-blue-100 text-blue-800' },
-    check_in:  { label: 'CHECK IN',  cls: 'bg-green-100 text-green-800' },
-    check_out: { label: 'CHECK OUT', cls: 'bg-blue-100 text-blue-800' },
-  };
-  const cfg = actions[action] || { label: action, cls: 'bg-gray-100 text-gray-700' };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wide ${cfg.cls}`}>
-      {cfg.label}
-    </span>
-  );
+const ACTION_CFG = {
+  arrival:   { label: 'Arrival',   short: 'IN',  cls: 'bg-green-100 text-green-800',  dot: 'bg-green-500' },
+  departure: { label: 'Departure', short: 'OUT', cls: 'bg-blue-100 text-blue-800',   dot: 'bg-blue-500'  },
+  check_in:  { label: 'Check In',  short: 'IN',  cls: 'bg-green-100 text-green-800',  dot: 'bg-green-500' },
+  check_out: { label: 'Check Out', short: 'OUT', cls: 'bg-blue-100 text-blue-800',   dot: 'bg-blue-500'  },
+};
+
+const COMMENT_CFG = {
+  early:           { label: 'Early',         cls: 'text-emerald-600' },
+  on_time:         { label: 'On Time',       cls: 'text-emerald-600' },
+  late:            { label: 'Late',          cls: 'text-orange-500'  },
+  early_departure: { label: 'Early Out',     cls: 'text-orange-500'  },
+  late_checkout:   { label: 'Late Out',      cls: 'text-orange-500'  },
+  invalid_time:    { label: 'Out of window', cls: 'text-gray-400'    },
+};
+
+function actionCfg(action) {
+  return ACTION_CFG[action] || { label: action, short: '?', cls: 'bg-gray-100 text-gray-700', dot: 'bg-gray-400' };
 }
 
-function CommentBadge({ comment }) {
-  if (!comment || comment === 'invalid_time') {
-    if (comment === 'invalid_time') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
-          out of window
-        </span>
-      );
-    }
-    return null;
-  }
-  const styles = {
-    early:           'bg-emerald-100 text-emerald-800',
-    on_time:         'bg-emerald-100 text-emerald-800',
-    late:            'bg-orange-100 text-orange-700',
-    early_departure: 'bg-orange-100 text-orange-700',
-    late_checkout:   'bg-orange-100 text-orange-700',
-  };
-  const labels = {
-    early:           'early',
-    on_time:         'on time',
-    late:            'late',
-    early_departure: 'early out',
-    late_checkout:   'late checkout',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${styles[comment] ?? 'bg-gray-100 text-gray-600'}`}>
-      {labels[comment] ?? comment}
-    </span>
-  );
+// A scan is a staff scan if it has staff_type (teacher service sets this) and no class
+function isStaff(scan) {
+  return Boolean(scan.staff_type) && !scan.class;
 }
 
-function ScanRow({ scan }) {
+// ── Latest scan — large prominent card ───────────────────────────────────────
+
+function LatestScanCard({ scan }) {
   const isSuccess = scan.status === 'success';
-  const isEntry = scan.action === 'arrival' || scan.action === 'check_in';
+  const isEntry   = scan.action === 'arrival' || scan.action === 'check_in';
+  const cfg       = actionCfg(scan.action);
+  const comment   = COMMENT_CFG[scan.comments];
+  const staff     = isStaff(scan);
 
-  const rowBg = !isSuccess
-    ? 'bg-red-50 border-red-200'
-    : isEntry
-      ? 'bg-green-50 border-green-200'
-      : 'bg-blue-50 border-blue-200';
+  const bg = !isSuccess ? 'from-red-50 to-red-100 border-red-200'
+           : isEntry    ? 'from-green-50 to-emerald-100 border-green-200'
+           :              'from-blue-50 to-indigo-100 border-blue-200';
+
+  const iconBg = !isSuccess ? 'bg-red-500'
+               : isEntry    ? 'bg-green-500'
+               :              'bg-blue-500';
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border animate-slide-in ${rowBg}`}>
-      <span className="w-20 text-sm font-mono text-gray-500 shrink-0">
-        {formatTime(scan.timestamp)}
-      </span>
+    <div className={`rounded-2xl border-2 bg-gradient-to-br ${bg} p-4 flex items-center gap-4 animate-slide-in`}>
+      {/* Icon */}
+      <div className={`${iconBg} w-12 h-12 rounded-full flex items-center justify-center shrink-0 shadow-md`}>
+        {isSuccess ? (
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+        ) : (
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        )}
+      </div>
 
+      {/* Main info */}
       <div className="flex-1 min-w-0">
         {isSuccess ? (
           <>
-            <p className="font-semibold text-gray-900 truncate">{scan.student_name}</p>
-            <p className="text-xs text-gray-500">{scan.class || scan.staff_type}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-gray-900 text-base leading-tight truncate">
+                {scan.student_name}
+              </p>
+              {/* STAFF / STUDENT badge */}
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                staff
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'bg-sky-100 text-sky-700'
+              }`}>
+                {staff ? 'STAFF' : 'STUDENT'}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {scan.class || scan.staff_type || ''}
+            </p>
           </>
         ) : (
           <>
-            <p className="font-semibold text-red-700 truncate">Scan Error</p>
-            <p className="text-xs text-red-500 truncate">{scan.error}</p>
+            <p className="font-bold text-red-700 text-base leading-tight">Scan Error</p>
+            <p className="text-xs text-red-500 mt-0.5 truncate">{scan.error}</p>
           </>
         )}
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-        {isSuccess && <ActionBadge action={scan.action} />}
-        {isSuccess && <CommentBadge comment={scan.comments} />}
-        {!isSuccess && (
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
-            ERROR
+      {/* Right: badges + time */}
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        {isSuccess && (
+          <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${cfg.cls}`}>
+            {cfg.label.toUpperCase()}
           </span>
         )}
+        {isSuccess && comment && (
+          <span className={`text-xs font-semibold ${comment.cls}`}>{comment.label}</span>
+        )}
+        {!isSuccess && (
+          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">ERROR</span>
+        )}
+        <span className="text-xs font-mono text-gray-400 mt-0.5">{formatTime(scan.timestamp)}</span>
       </div>
     </div>
   );
 }
+
+// ── History row — compact table row ──────────────────────────────────────────
+
+function HistoryRow({ scan, index }) {
+  const isSuccess = scan.status === 'success';
+  const cfg       = actionCfg(scan.action);
+  const comment   = COMMENT_CFG[scan.comments];
+  const staff     = isStaff(scan);
+
+  return (
+    <tr className={`border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${index % 2 === 0 ? '' : 'bg-gray-50/40'}`}>
+      <td className="px-3 py-2 text-xs font-mono text-gray-400 whitespace-nowrap w-20">
+        {formatTime(scan.timestamp)}
+      </td>
+      <td className="px-3 py-2 max-w-0 w-full">
+        {isSuccess ? (
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-sm font-semibold text-gray-800 truncate">{scan.student_name}</span>
+            <span className={`text-xs font-bold px-1 py-0.5 rounded shrink-0 ${
+              staff ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'
+            }`}>
+              {staff ? 'S' : 'ST'}
+            </span>
+            {(scan.class || scan.staff_type) && (
+              <span className="text-xs text-gray-400 truncate hidden sm:block">
+                {scan.class || scan.staff_type}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-sm font-semibold text-red-500 truncate block">{scan.error || 'Error'}</span>
+        )}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {isSuccess ? (
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+            <span className="text-xs font-semibold text-gray-600">{cfg.short}</span>
+          </div>
+        ) : (
+          <span className="text-xs font-bold text-red-500">ERR</span>
+        )}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {comment && isSuccess && (
+          <span className={`text-xs font-medium ${comment.cls}`}>{comment.label}</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 
 export default function ScanLog({ scans }) {
   if (scans.length === 0) {
@@ -120,15 +183,34 @@ export default function ScanLog({ scans }) {
     );
   }
 
+  const [latest, ...rest] = scans;
+
   return (
-    <div className="space-y-2">
-      {scans.slice(0, MAX_SCANS).map((scan) => (
-        <ScanRow key={scan.id} scan={scan} />
-      ))}
-      {scans.length >= MAX_SCANS && (
-        <p className="text-center text-xs text-gray-400 pt-1">
-          Showing last {MAX_SCANS} scans
-        </p>
+    <div className="flex flex-col gap-3">
+      {/* Latest scan — prominent */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Latest</p>
+        <LatestScanCard scan={latest} />
+      </div>
+
+      {/* History — compact scrollable table */}
+      {rest.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+            Previous ({rest.length})
+          </p>
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <div className="overflow-y-auto" style={{ maxHeight: '260px' }}>
+              <table className="w-full text-left">
+                <tbody>
+                  {rest.map((scan, i) => (
+                    <HistoryRow key={scan.id} scan={scan} index={i} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -22,9 +22,8 @@ class Config:
     SMTP_EMAIL    = os.getenv("SMTP_EMAIL", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
-    # Twilio WhatsApp
-    TWILIO_ACCOUNT_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155552671")
+    # D7 Networks WhatsApp
+    D7_API_TOKEN     = os.getenv("D7_API_TOKEN", "")
+    D7_WHATSAPP_FROM = os.getenv("D7_WHATSAPP_FROM", "")  # your registered WhatsApp number e.g. +2348012345678
 
     SCHOOL_NAME = os.getenv("SCHOOL_NAME", "Peculiar School")

@@ -43,7 +43,13 @@ def create_app():
     app.config.from_object(Config)
     raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     cors_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
-    CORS(app, origins=cors_origins)
+    CORS(
+        app,
+        origins=cors_origins,
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+        supports_credentials=False,
+    )
 
     register_blueprints(app)
 

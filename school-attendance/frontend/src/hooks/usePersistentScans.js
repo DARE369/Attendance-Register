@@ -1,16 +1,25 @@
 import { useState, useEffect } from 'react';
 
 const STORAGE_KEY = 'peculiar_recent_scans';
-const MAX_SCANS = 50;
+const MAX_SCANS   = 50;
+
+function todayPrefix() {
+  return new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+}
+
+function loadTodayScans() {
+  try {
+    const today  = todayPrefix();
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    // Only keep scans from today — drop anything older automatically
+    return parsed.filter((s) => (s.scanned_at || '').startsWith(today));
+  } catch {
+    return [];
+  }
+}
 
 export function usePersistentScans() {
-  const [scans, setScans] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    } catch {
-      return [];
-    }
-  });
+  const [scans, setScans] = useState(loadTodayScans);
 
   useEffect(() => {
     try {
@@ -20,7 +29,12 @@ export function usePersistentScans() {
 
   function addScan(result) {
     const stamped = { ...result, scanned_at: new Date().toISOString() };
-    setScans((prev) => [stamped, ...prev].slice(0, MAX_SCANS));
+    const today   = todayPrefix();
+    setScans((prev) =>
+      [stamped, ...prev]
+        .filter((s) => (s.scanned_at || '').startsWith(today)) // always prune old days
+        .slice(0, MAX_SCANS)
+    );
   }
 
   function clearScans() {

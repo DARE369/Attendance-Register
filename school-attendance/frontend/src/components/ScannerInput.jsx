@@ -18,7 +18,7 @@ function friendlyError(err) {
   return msg || 'Scan failed. Please try again.';
 }
 
-export default function ScannerInput({ onResult }) {
+export default function ScannerInput({ onResult, paused = false }) {
   const inputRef    = useRef(null);
   const timeoutRef  = useRef(null);
   const barcodeRef  = useRef('');   // mirrors barcode state for use inside the timeout
@@ -27,10 +27,11 @@ export default function ScannerInput({ onResult }) {
   const [barcode, setBarcode] = useState('');
   const [status,  setStatus]  = useState(STATUS.IDLE);
 
-  // ── Keep hidden input focused ─────────────────────────────────────────────
+  // ── Keep hidden input focused (unless paused by parent) ───────────────────
   const refocus = useCallback(() => {
+    if (paused) return;
     if (status !== STATUS.SCANNING) inputRef.current?.focus();
-  }, [status]);
+  }, [status, paused]);
 
   useEffect(() => {
     refocus();
@@ -45,7 +46,7 @@ export default function ScannerInput({ onResult }) {
 
   // ── Core scan logic ───────────────────────────────────────────────────────
   const doScan = useCallback(async (trimmed) => {
-    if (!trimmed || status === STATUS.SCANNING) return;
+    if (!trimmed || status === STATUS.SCANNING || paused) return;
 
     // Client-side cooldown prevents double-fire on slow networks
     if (Date.now() - lastScanRef.current < SCAN_COOLDOWN_MS) {
@@ -62,6 +63,14 @@ export default function ScannerInput({ onResult }) {
 
     try {
       const { data } = await scanBarcode(trimmed);
+
+      // Ambiguous — two people share this barcode, parent handles the modal
+      if (data.status === 'ambiguous') {
+        setStatus(STATUS.ERROR);  // amber-ish; input will reset after 1500ms
+        onResult({ ...data, id: Date.now() });
+        toast('Duplicate ID — select the correct person', { icon: '⚠️' });
+        return;
+      }
 
       // Backend returns HTTP 200 for holiday closures — handle separately
       if (data.status === 'holiday') {

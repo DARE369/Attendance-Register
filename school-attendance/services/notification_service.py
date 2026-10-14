@@ -95,9 +95,23 @@ def _fmt(body: str, variables: dict) -> str:
 # Logic helpers
 # ---------------------------------------------------------------------------
 
-def should_notify_parent(log_type: str, comments: Optional[str]) -> bool:
-    """Always notify parents on every arrival/departure scan."""
-    return log_type in ("arrival", "departure")
+def should_notify_parent(
+    log_type: str,
+    comments: Optional[str],
+    transport_mode: str = "parent_drop",
+    admin_settings: Optional[dict] = None,
+) -> bool:
+    """
+    Returns True if a parent notification should be sent.
+    Respects transport-mode toggles in admin_settings.
+    """
+    if log_type not in ("arrival", "departure"):
+        return False
+    settings = {**_DEFAULTS, **(admin_settings or {})}
+    if transport_mode == "school_bus"  and not settings.get("notify_school_bus",     False): return False
+    if transport_mode == "self"        and not settings.get("notify_self_transport",  True):  return False
+    if transport_mode == "parent_drop" and not settings.get("notify_parent_drop",     True):  return False
+    return True
 
 
 def should_notify_admin(
@@ -140,10 +154,11 @@ def process_attendance_notification(
             logger.warning("[NOTIFY] Student %s not found — skipping notification", student_id)
             return
 
-        parent_email  = student.get("parent_email")  or ""
-        parent_phone  = student.get("parent_phone")  or ""
-        student_name  = student["full_name"]
-        student_class = student["class"]
+        parent_email   = student.get("parent_email")    or ""
+        parent_phone   = student.get("parent_phone")    or ""
+        student_name   = student["full_name"]
+        student_class  = student["class"]
+        transport_mode = student.get("transport_mode") or "parent_drop"
 
         # Format timestamp → "08:30 AM"
         time_str = _fmt_time(scan_timestamp)
@@ -154,19 +169,42 @@ def process_attendance_notification(
             "school_name":  Config.SCHOOL_NAME,
         }
 
+        # Pull all admin settings once (used for both parent and admin checks)
+        all_settings = db.get_all_admin_settings() or []
+        first_settings = all_settings[0] if all_settings else {}
+
         # ── Parent notifications ──────────────────────────────────────────────
-        if should_notify_parent(log_type, comments):
+        if should_notify_parent(log_type, comments, transport_mode, first_settings):
             if log_type == "arrival":
                 vars_ = {**base_vars, "arrival_time": time_str}
                 _send_parent_email(parent_email, "parent_arrival_email", vars_)
-                _send_parent_whatsapp(parent_phone, "parent_arrival_whatsapp", vars_)
+                # Use D7 template (not free-form text) — required by WhatsApp Business API
+                # for business-initiated messages outside a 24-hour conversation window.
+                if parent_phone and first_settings.get("whatsapp_enabled", True):
+                    whatsapp_service.send_whatsapp_arrival(parent_phone, student_name, time_str)
             else:
                 vars_ = {**base_vars, "departure_time": time_str}
                 _send_parent_email(parent_email, "parent_departure_email", vars_)
-                _send_parent_whatsapp(parent_phone, "parent_departure_whatsapp", vars_)
+                if parent_phone and first_settings.get("whatsapp_enabled", True):
+                    whatsapp_service.send_whatsapp_departure(parent_phone, student_name, time_str)
+
+        # ── Teacher notifications ─────────────────────────────────────────────
+        try:
+            notifiable = db.get_notifiable_teachers_for_class(student_class) or []
+            for teacher in notifiable:
+                t_phone = teacher.get("phone")
+                if not t_phone:
+                    continue
+                action = "arrived at" if log_type == "arrival" else "left"
+                msg = (
+                    f"[{Config.SCHOOL_NAME}] {student_name} ({student_class}) "
+                    f"{action} school at {time_str}."
+                )
+                whatsapp_service.send_templated_whatsapp(t_phone, msg)
+        except Exception as exc:
+            logger.warning("[NOTIFY] Teacher notification error: %s", exc)
 
         # ── Admin notifications ───────────────────────────────────────────────
-        all_settings = db.get_all_admin_settings() or []
         for row in all_settings:
             notify, ntype = should_notify_admin(log_type, comments, row)
             if not notify:
@@ -188,7 +226,17 @@ def process_attendance_notification(
 # Scheduled checks (call from a cron / APScheduler job)
 # ---------------------------------------------------------------------------
 
-def check_non_arrivals(cutoff_time: str = "12:00") -> None:
+def _get_cutoff(key: str, default: str) -> str:
+    try:
+        settings = db.get_school_settings()
+        return settings.get(key, default)
+    except Exception:
+        return default
+
+
+def check_non_arrivals(cutoff_time: str | None = None) -> None:
+    if cutoff_time is None:
+        cutoff_time = _get_cutoff('non_arrival_cutoff', '12:00')
     """
     Notify admins about students who have NOT arrived by cutoff_time.
     Should be triggered by a scheduled job at 12:00 PM on school days.
@@ -231,7 +279,9 @@ def check_non_arrivals(cutoff_time: str = "12:00") -> None:
         logger.error("[NOTIFY] check_non_arrivals error: %s", exc)
 
 
-def check_non_departures(cutoff_time: str = "18:00") -> None:
+def check_non_departures(cutoff_time: str | None = None) -> None:
+    if cutoff_time is None:
+        cutoff_time = _get_cutoff('non_departure_cutoff', '18:00')
     """
     Notify admins about students still on premises past cutoff_time.
     Should be triggered by a scheduled job at 6:00 PM on school days.

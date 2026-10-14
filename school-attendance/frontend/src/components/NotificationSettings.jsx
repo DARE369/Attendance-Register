@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { getSettings, saveSettings } from '../services/api';
+import { getSettings, saveSettings, testWhatsApp } from '../services/api';
 
 const TOGGLES = [
   {
@@ -35,6 +35,27 @@ const PRIORITY_TOGGLES = [
   },
 ];
 
+const TRANSPORT_TOGGLES = [
+  {
+    key: 'notify_parent_drop',
+    label: 'Parent Drop-off',
+    description: 'Notify parents when their child is dropped off by a parent',
+    defaultOn: true,
+  },
+  {
+    key: 'notify_self_transport',
+    label: 'Walks / Comes Alone',
+    description: 'Notify parents when their child arrives on their own',
+    defaultOn: true,
+  },
+  {
+    key: 'notify_school_bus',
+    label: 'School Bus Students',
+    description: 'Notify parents of bus students (off by default — bus delays should not affect parent relationships)',
+    defaultOn: false,
+  },
+];
+
 function Toggle({ checked, onChange, disabled }) {
   return (
     <button
@@ -58,10 +79,13 @@ function Toggle({ checked, onChange, disabled }) {
   );
 }
 
-export default function NotificationSettings({ onClose }) {
+export default function NotificationSettings({ onClose, isEmbedded = false }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [saving,  setSaving]    = useState(false);
+  const [testPhone,   setTestPhone]   = useState('');
+  const [testLoading, setTestLoading] = useState(false);
+  const [showTestBox, setShowTestBox] = useState(false);
 
   useEffect(() => {
     getSettings()
@@ -73,12 +97,28 @@ export default function NotificationSettings({ onClose }) {
   const toggle = (key) =>
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const handleTestWhatsApp = async () => {
+    if (!testPhone.trim()) { toast.error('Enter a phone number first'); return; }
+    setTestLoading(true);
+    try {
+      await testWhatsApp(testPhone.trim());
+      toast.success('Test message sent — check the phone');
+      setShowTestBox(false);
+      setTestPhone('');
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to send test message';
+      toast.error(msg);
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
       await saveSettings(settings);
       toast.success('Settings saved');
-      onClose();
+      if (!isEmbedded) onClose?.();
     } catch {
       toast.error('Failed to save settings');
     } finally {
@@ -86,13 +126,8 @@ export default function NotificationSettings({ onClose }) {
     }
   };
 
-  return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+  const content = (
+    <div className={`bg-white ${isEmbedded ? 'rounded-xl border border-gray-200' : 'rounded-2xl shadow-2xl w-full max-w-md'} overflow-hidden`}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -105,15 +140,14 @@ export default function NotificationSettings({ onClose }) {
             </svg>
             <h2 className="text-lg font-bold text-gray-900">Notification Settings</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg
-                       hover:bg-gray-100"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          {!isEmbedded && (
+            <button onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Body */}
@@ -147,6 +181,45 @@ export default function NotificationSettings({ onClose }) {
                       disabled={saving}
                     />
                   </div>
+                  {/* Test button for WhatsApp channel */}
+                  {key === 'whatsapp_enabled' && (
+                    <div className="mt-2">
+                      {!showTestBox ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowTestBox(true)}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+                          Send test message →
+                        </button>
+                      ) : (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="tel"
+                            value={testPhone}
+                            onChange={(e) => setTestPhone(e.target.value)}
+                            placeholder="+2348012345678"
+                            className="flex-1 text-xs border border-gray-300 rounded-lg px-3 py-2
+                                       focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleTestWhatsApp}
+                            disabled={testLoading}
+                            className="px-3 py-2 text-xs font-semibold text-white bg-green-600
+                                       hover:bg-green-700 rounded-lg transition-colors disabled:opacity-60">
+                            {testLoading ? 'Sending…' : 'Send'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setShowTestBox(false); setTestPhone(''); }}
+                            className="px-3 py-2 text-xs font-semibold text-gray-600 bg-gray-100
+                                       hover:bg-gray-200 rounded-lg transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -165,8 +238,31 @@ export default function NotificationSettings({ onClose }) {
                       <p className="text-sm font-semibold text-gray-800">{label}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{description}</p>
                     </div>
+                    <Toggle checked={!!settings[key]} onChange={() => toggle(key)} disabled={saving} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            {/* Transport mode notification control */}
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                Parent Notifications — By Transport Mode
+              </p>
+              <p className="text-xs text-gray-400 mb-3">
+                Control which parents receive arrival/departure alerts based on how their child travels.
+              </p>
+              <div className="space-y-4">
+                {TRANSPORT_TOGGLES.map(({ key, label, description, defaultOn }) => (
+                  <div key={key} className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+                    </div>
                     <Toggle
-                      checked={!!settings[key]}
+                      checked={key in settings ? !!settings[key] : defaultOn}
                       onChange={() => toggle(key)}
                       disabled={saving}
                     />
@@ -181,15 +277,13 @@ export default function NotificationSettings({ onClose }) {
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border
-                       border-gray-300 rounded-lg hover:bg-gray-50 transition-colors
-                       disabled:opacity-50"
-          >
-            Cancel
-          </button>
+          {!isEmbedded && (
+            <button onClick={onClose} disabled={saving}
+              className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border
+                         border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
+              Cancel
+            </button>
+          )}
           <button
             onClick={handleSave}
             disabled={saving || loading || !settings}
@@ -209,6 +303,14 @@ export default function NotificationSettings({ onClose }) {
           </button>
         </div>
       </div>
+  );
+
+  if (isEmbedded) return content;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose?.()}>
+      {content}
     </div>
   );
 }

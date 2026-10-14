@@ -97,7 +97,7 @@ function ChannelBadge({ channel }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function TemplateCustomization() {
+export default function TemplateCustomization({ isEmbedded = false }) {
   const [templates,    setTemplates]    = useState({});
   const [loading,      setLoading]      = useState(true);
   const [selectedKey,  setSelectedKey]  = useState(ALL_ITEMS[0].key);
@@ -166,12 +166,8 @@ export default function TemplateCustomization() {
     setDirty(true);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100">
-
-      <AppHeader subtitle="Message Templates" />
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
+  const mainContent = (
+    <div className="max-w-7xl mx-auto">
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <svg className="animate-spin w-8 h-8 text-blue-500" viewBox="0 0 24 24" fill="none">
@@ -356,7 +352,15 @@ export default function TemplateCustomization() {
             )}
           </div>
         )}
-      </main>
+    </div>
+  );
+
+  if (isEmbedded) return mainContent;
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <AppHeader subtitle="Message Templates" />
+      <main className="px-4 py-6">{mainContent}</main>
     </div>
   );
 }

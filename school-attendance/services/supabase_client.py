@@ -291,12 +291,35 @@ def get_all_teachers() -> list[dict]:
     return _request("GET", "teachers", params={"select": "*", "order": "full_name.asc"}) or []
 
 
+def get_notifiable_teachers_for_class(class_name: str) -> list[dict]:
+    """Returns active teachers assigned to class_name who have opted in for scan notifications."""
+    return _request(
+        "GET",
+        "teachers",
+        params={
+            "select":          "*",
+            "assigned_class":  _eq(class_name),
+            "notify_on_scan":  "eq.true",
+            "is_active":       "eq.true",
+        },
+    ) or []
+
+
 def get_teacher_by_barcode(barcode_id: str) -> Optional[dict]:
     return _request(
         "GET", "teachers",
         params={"select": "*", "barcode_id": _eq(barcode_id), "is_active": "eq.true"},
         single=True,
     )
+
+
+def get_both_by_barcode(barcode: str) -> tuple[Optional[dict], Optional[dict]]:
+    """Return (teacher, student) — either or both may be None."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ft = pool.submit(get_teacher_by_barcode, barcode)
+        fs = pool.submit(get_student, barcode)
+        return ft.result(), fs.result()
 
 
 def get_teachers_by_barcodes(barcode_ids: list) -> list:
@@ -528,3 +551,79 @@ def update_fraud_alert(alert_id: str, data: dict) -> dict:
     data["updated_at"] = datetime.utcnow().isoformat()
     result = _request("PATCH", "fraud_alerts", params={"alert_id": _eq(alert_id)}, json=data)
     return result[0] if result else {}
+
+
+# ---------------------------------------------------------------------------
+# Scan day overrides
+# ---------------------------------------------------------------------------
+
+def get_scan_override(date_str: str) -> Optional[dict]:
+    """Return the override record for a specific date, or None."""
+    results = _request(
+        "GET", "scan_day_overrides",
+        params={"override_date": _eq(date_str), "select": "*", "limit": "1"},
+    )
+    return results[0] if results else None
+
+
+def list_scan_overrides(from_date: Optional[str] = None, to_date: Optional[str] = None) -> list[dict]:
+    params = [("select", "*"), ("order", "override_date.asc")]
+    if from_date:
+        params.append(("override_date", f"gte.{from_date}"))
+    if to_date:
+        params.append(("override_date", f"lte.{to_date}"))
+    return _request("GET", "scan_day_overrides", params=params) or []
+
+
+def upsert_scan_override(data: dict) -> dict:
+    result = _request(
+        "POST", "scan_day_overrides",
+        params={"on_conflict": "override_date"},
+        json=data,
+    )
+    return result[0] if result else {}
+
+
+def delete_scan_override(date_str: str) -> None:
+    _request("DELETE", "scan_day_overrides", params={"override_date": _eq(date_str)})
+
+
+# ---------------------------------------------------------------------------
+# School settings  (key-value store for configurable constants)
+# ---------------------------------------------------------------------------
+
+def get_school_settings() -> dict[str, str]:
+    rows = _request("GET", "school_settings", params={"select": "key,value"}) or []
+    return {r["key"]: r["value"] for r in rows}
+
+
+def upsert_school_setting(key: str, value: str) -> None:
+    _request(
+        "POST", "school_settings",
+        params={"on_conflict": "key"},
+        json={"key": key, "value": value},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Student groups  (admin-managed named groups with transport mode)
+# ---------------------------------------------------------------------------
+
+def get_student_groups() -> list[dict]:
+    return _request("GET", "student_groups",
+                    params={"select": "*", "order": "name.asc"}) or []
+
+
+def create_student_group(data: dict) -> dict:
+    result = _request("POST", "student_groups", json=data)
+    return result[0] if result else {}
+
+
+def update_student_group(group_id: str, data: dict) -> dict:
+    result = _request("PATCH", "student_groups",
+                      params={"id": _eq(group_id)}, json=data)
+    return result[0] if result else {}
+
+
+def delete_student_group(group_id: str) -> None:
+    _request("DELETE", "student_groups", params={"id": _eq(group_id)})

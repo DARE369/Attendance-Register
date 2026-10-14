@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, date
 
 from services import supabase_client as db
+from services import tz as _tz
 
 logger = logging.getLogger("scan")
 
@@ -89,7 +90,7 @@ def process_teacher_scan(barcode_id: str, scan_time: datetime, teacher: dict | N
             "message": "Configuration missing. Contact admin.",
         }
 
-    today_log = db.get_teacher_log_by_date(teacher["teacher_id"], date.today().isoformat())
+    today_log = db.get_teacher_log_by_date(teacher["teacher_id"], _tz.today_str())
 
     if today_log is None or not today_log.get("check_in_time"):
         # ── CHECK-IN ────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ def process_teacher_scan(barcode_id: str, scan_time: datetime, teacher: dict | N
         try:
             db.insert_teacher_log({
                 "teacher_id":       teacher["teacher_id"],
-                "scan_date":        date.today().isoformat(),
+                "scan_date":        _tz.today_str(),
                 "check_in_time":    scan_time.isoformat(),
                 "check_in_status":  status,
                 "check_in_comments": comment,

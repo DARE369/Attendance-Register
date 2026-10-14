@@ -5,7 +5,8 @@ import logging
 import re
 from flask import Blueprint, request, jsonify, g
 
-from routes.auth import token_required, require_role
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import auth_service, supabase_client as db
 
 admin_mgmt_bp = Blueprint("admin_mgmt", __name__)
@@ -19,7 +20,7 @@ _VALID_ROLES = {"super_admin", "admin", "scanner"}
 # ---------------------------------------------------------------------------
 
 @admin_mgmt_bp.get("/profile")
-@token_required
+@_admin_required
 def get_profile():
     admin = db.get_admin_by_id(g.admin_id)
     if not admin:
@@ -29,7 +30,7 @@ def get_profile():
 
 
 @admin_mgmt_bp.patch("/profile")
-@token_required
+@_admin_required
 def update_profile():
     body = request.get_json(silent=True) or {}
     allowed = {"display_name", "email", "phone"}
@@ -55,7 +56,7 @@ def update_profile():
 
 
 @admin_mgmt_bp.post("/change-password")
-@token_required
+@_admin_required
 def change_password():
     body = request.get_json(silent=True) or {}
     current_password = body.get("current_password", "")

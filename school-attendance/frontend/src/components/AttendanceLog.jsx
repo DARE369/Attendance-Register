@@ -5,9 +5,17 @@ import { useState, useMemo } from 'react';
 function fmtTime(ts) {
   if (!ts) return '—';
   try {
-    return new Date(ts).toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
+    // Extract HH:MM:SS directly from the ISO string without creating a Date object.
+    // Our timestamps are stored as Nigeria WAT time but tagged +00 in the DB;
+    // using new Date() would incorrectly add another +1 hour in the local WAT browser.
+    const raw = ts.includes('T') ? ts.split('T')[1] : ts.split(' ')[1] ?? ts;
+    const clean = raw.replace(/\+.*|Z/, '');          // strip timezone suffix
+    const [h, m, s] = clean.split(':');
+    const hour = parseInt(h, 10);
+    const sec  = (s ?? '00').split('.')[0].padStart(2, '0');
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const h12  = String((hour % 12) || 12).padStart(2, '0');
+    return `${h12}:${m}:${sec} ${ampm}`;
   } catch { return ts; }
 }
 

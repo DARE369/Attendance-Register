@@ -10,7 +10,8 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 from services import csv_service
 from services.audit_service import log_audit
@@ -60,7 +61,7 @@ def _audit(admin_id, action, table_name, record_id=None, old_value=None, new_val
 # ---------------------------------------------------------------------------
 
 @management_bp.get("/students")
-@token_required
+@_admin_required
 def list_students():
     try:
         students = db.get_all_students()
@@ -70,7 +71,7 @@ def list_students():
 
 
 @management_bp.post("/students")
-@token_required
+@_admin_required
 def add_student():
     from flask import g
     body = request.get_json(silent=True) or {}
@@ -85,12 +86,18 @@ def add_student():
     if db.get_student(student_id):
         return jsonify({"error": f"Student ID '{student_id}' is already registered"}), 409
 
+    transport_mode = (body.get("transport_mode") or "parent_drop").strip()
+    if transport_mode not in ("parent_drop", "school_bus", "self"):
+        transport_mode = "parent_drop"
+
     student = {
-        "student_id":    student_id,
-        "full_name":     full_name,
-        "class":         class_name,
-        "parent_phone":  (body.get("parent_phone") or "").strip() or None,
-        "parent_email":  (body.get("parent_email") or "").strip() or None,
+        "student_id":     student_id,
+        "full_name":      full_name,
+        "class":          class_name,
+        "transport_mode": transport_mode,
+        "group_tag":      (body.get("group_tag") or "").strip() or None,
+        "parent_phone":   (body.get("parent_phone") or "").strip() or None,
+        "parent_email":   (body.get("parent_email") or "").strip() or None,
     }
 
     try:
@@ -107,7 +114,7 @@ def add_student():
 
 
 @management_bp.put("/students/<student_id>")
-@token_required
+@_admin_required
 def update_student(student_id: str):
     from flask import g
     student_id = student_id.upper()
@@ -118,9 +125,12 @@ def update_student(student_id: str):
         return jsonify({"error": f"Student '{student_id}' not found"}), 404
 
     updates = {}
-    for field in ("full_name", "class", "parent_phone", "parent_email"):
+    for field in ("full_name", "class", "parent_phone", "parent_email", "group_tag"):
         if field in body:
             updates[field] = (body[field] or "").strip() or None
+    if "transport_mode" in body:
+        tm = (body["transport_mode"] or "parent_drop").strip()
+        updates["transport_mode"] = tm if tm in ("parent_drop", "school_bus", "self") else "parent_drop"
 
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -137,7 +147,7 @@ def update_student(student_id: str):
 
 
 @management_bp.delete("/students/<student_id>")
-@token_required
+@_admin_required
 def delete_student(student_id: str):
     from flask import g
     student_id = student_id.upper()
@@ -161,7 +171,7 @@ def delete_student(student_id: str):
 # ---------------------------------------------------------------------------
 
 @management_bp.get("/teachers")
-@token_required
+@_admin_required
 def list_teachers():
     try:
         teachers = db.get_all_teachers()
@@ -171,7 +181,7 @@ def list_teachers():
 
 
 @management_bp.post("/teachers")
-@token_required
+@_admin_required
 def add_teacher():
     from flask import g
     body = request.get_json(silent=True) or {}
@@ -215,7 +225,7 @@ def add_teacher():
 
 
 @management_bp.put("/teachers/<teacher_id>")
-@token_required
+@_admin_required
 def update_teacher(teacher_id: str):
     from flask import g
     body = request.get_json(silent=True) or {}
@@ -226,7 +236,7 @@ def update_teacher(teacher_id: str):
         return jsonify({"error": f"Teacher '{teacher_id}' not found"}), 404
 
     updates = {}
-    for field in ("full_name", "phone", "email", "is_active"):
+    for field in ("full_name", "phone", "email", "is_active", "assigned_class", "notify_on_scan"):
         if field in body:
             updates[field] = body[field]
 
@@ -258,7 +268,7 @@ def update_teacher(teacher_id: str):
 
 
 @management_bp.delete("/teachers/<teacher_id>")
-@token_required
+@_admin_required
 def delete_teacher(teacher_id: str):
     from flask import g
     teachers = db.get_all_teachers()
@@ -277,7 +287,7 @@ def delete_teacher(teacher_id: str):
 
 
 @management_bp.post("/teachers/import")
-@token_required
+@_admin_required
 def import_teachers_csv():
     from flask import g
 
@@ -312,7 +322,7 @@ def import_teachers_csv():
 # ---------------------------------------------------------------------------
 
 @management_bp.get("/staff-types")
-@token_required
+@_admin_required
 def list_staff_types():
     try:
         configs = db.get_all_staff_types()
@@ -322,7 +332,7 @@ def list_staff_types():
 
 
 @management_bp.post("/staff-types")
-@token_required
+@_admin_required
 def add_staff_type():
     from flask import g
     body = request.get_json(silent=True) or {}
@@ -371,7 +381,7 @@ def add_staff_type():
 
 
 @management_bp.put("/staff-types/<config_id>")
-@token_required
+@_admin_required
 def update_staff_type(config_id: str):
     from flask import g
     configs = db.get_all_staff_types()
@@ -415,7 +425,7 @@ def update_staff_type(config_id: str):
 
 
 @management_bp.delete("/staff-types/<config_id>")
-@token_required
+@_admin_required
 def delete_staff_type(config_id: str):
     from flask import g
     configs = db.get_all_staff_types()
@@ -444,7 +454,7 @@ def delete_staff_type(config_id: str):
 # ---------------------------------------------------------------------------
 
 @management_bp.get("/teacher-logs")
-@token_required
+@_admin_required
 def get_teacher_logs():
     try:
         date       = request.args.get("date")
@@ -460,7 +470,7 @@ def get_teacher_logs():
 # ---------------------------------------------------------------------------
 
 @management_bp.get("/audit-logs")
-@token_required
+@_admin_required
 def get_audit_logs():
     try:
         limit  = int(request.args.get("limit", 50))

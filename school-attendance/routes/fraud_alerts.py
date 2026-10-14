@@ -5,7 +5,8 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from routes.auth import token_required
+from routes.auth import require_role
+_admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 
 fraud_bp = Blueprint("fraud", __name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger("fraud")
 
 # GET /api/admin/fraud-alerts?resolved=false
 @fraud_bp.get("/fraud-alerts")
-@token_required
+@_admin_required
 def list_alerts():
     resolved_param = request.args.get("resolved", "").lower()
     resolved = None
@@ -33,7 +34,7 @@ def list_alerts():
 
 # PATCH /api/admin/fraud-alerts/<alert_id>
 @fraud_bp.patch("/fraud-alerts/<alert_id>")
-@token_required
+@_admin_required
 def update_alert(alert_id):
     body = request.get_json(silent=True) or {}
     allowed = {"is_resolved", "admin_notes"}

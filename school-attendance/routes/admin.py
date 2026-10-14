@@ -1,14 +1,24 @@
 import csv
 import io
+import time
+import threading
 from datetime import date as _date, timedelta
 from typing import Optional
 
 from flask import Blueprint, jsonify, request, make_response
 
-from routes.auth import token_required
+from routes.auth import token_required, require_role
+
+# All admin endpoints require at least the 'admin' role.
+# The 'scanner' role is locked to scan endpoints only.
+_admin_required = require_role('admin', 'super_admin')
 from services import supabase_client as db
 
 admin_bp = Blueprint("admin", __name__)
+
+_dashboard_cache: dict = {}
+_cache_lock = threading.Lock()
+_CACHE_TTL = 5.0  # seconds
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +56,8 @@ def _build_dashboard(date_str: str) -> dict:
 
     classes_seen: set[str] = set()
     students_by_class: dict[str, list] = {}
-    summary = {"total": 0, "arrived": 0, "departed": 0, "pending": 0}
+    summary = {"total": 0, "arrived": 0, "departed": 0, "pending": 0,
+               "early": 0, "on_time": 0, "late": 0}
 
     for stu in students:
         sid = stu["student_id"]
@@ -70,6 +81,15 @@ def _build_dashboard(date_str: str) -> dict:
 
         summary["total"] += 1
         summary[status]  += 1
+
+        if first_arrival:
+            c = first_arrival.get("comments")
+            if c == "early":
+                summary["early"] += 1
+            elif c == "late":
+                summary["late"] += 1
+            else:
+                summary["on_time"] += 1
 
         students_by_class[cls].append({
             "student_id":        sid,
@@ -122,6 +142,8 @@ def _build_dashboard(date_str: str) -> dict:
             "last_scan":      (tlog.get("check_out_time") or tlog.get("check_in_time")) if tlog else None,
         })
 
+    summary["still_in"] = summary["arrived"] - summary["departed"]
+
     return {
         "date":              date_str,
         "classes":           sorted(classes_seen),
@@ -137,17 +159,27 @@ def _build_dashboard(date_str: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @admin_bp.get("/dashboard")
-@token_required
+@_admin_required
 def dashboard():
     date_str = request.args.get("date", _date.today().isoformat())
     try:
-        return jsonify(_build_dashboard(date_str))
+        with _cache_lock:
+            entry = _dashboard_cache.get(date_str)
+            if entry and (time.monotonic() - entry["ts"]) < _CACHE_TTL:
+                return jsonify(entry["data"])
+
+        data = _build_dashboard(date_str)
+
+        with _cache_lock:
+            _dashboard_cache[date_str] = {"data": data, "ts": time.monotonic()}
+
+        return jsonify(data)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
 
 @admin_bp.get("/students/<class_name>")
-@token_required
+@_admin_required
 def students_by_class(class_name: str):
     date_str = request.args.get("date", _date.today().isoformat())
     try:
@@ -161,7 +193,7 @@ def students_by_class(class_name: str):
 
 
 @admin_bp.get("/attendance-log")
-@token_required
+@_admin_required
 def attendance_log():
     date_str   = request.args.get("date", _date.today().isoformat())
     student_id = request.args.get("student_id")
@@ -173,7 +205,7 @@ def attendance_log():
 
 
 @admin_bp.get("/analytics")
-@token_required
+@_admin_required
 def analytics():
     today     = _date.today()
     end_str   = request.args.get("end",   today.isoformat())
@@ -262,7 +294,7 @@ def analytics():
 
 
 @admin_bp.get("/staff-analytics/<teacher_id>")
-@token_required
+@_admin_required
 def staff_analytics(teacher_id: str):
     today     = _date.today()
     end_str   = request.args.get("end",   today.isoformat())
@@ -352,7 +384,7 @@ def staff_analytics(teacher_id: str):
 
 
 @admin_bp.get("/export-csv")
-@token_required
+@_admin_required
 def export_csv():
     date_str = request.args.get("date", _date.today().isoformat())
     try:
@@ -383,3 +415,191 @@ def export_csv():
 
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Scan day overrides  (admin-only CRUD)
+# ---------------------------------------------------------------------------
+
+@admin_bp.get("/scan-overrides")
+@_admin_required
+def list_scan_overrides():
+    from_date = request.args.get("from")
+    to_date   = request.args.get("to")
+    rows = db.list_scan_overrides(from_date=from_date, to_date=to_date)
+    return jsonify(rows)
+
+
+@admin_bp.post("/scan-overrides")
+@_admin_required
+def upsert_scan_override():
+    from flask import g
+    body = request.get_json(silent=True) or {}
+
+    override_date = (body.get("override_date") or "").strip()
+    override_type = (body.get("override_type") or "").strip().lower()
+    reason        = (body.get("reason") or "").strip() or None
+
+    if not override_date:
+        return jsonify({"error": "override_date is required (YYYY-MM-DD)"}), 400
+    try:
+        _date.fromisoformat(override_date)
+    except ValueError:
+        return jsonify({"error": "override_date must be YYYY-MM-DD"}), 400
+    if override_type not in ("allow", "block"):
+        return jsonify({"error": "override_type must be 'allow' or 'block'"}), 400
+
+    result = db.upsert_scan_override({
+        "override_date": override_date,
+        "override_type": override_type,
+        "reason":        reason,
+        "created_by":    g.admin_id,
+    })
+    return jsonify(result), 201
+
+
+@admin_bp.delete("/scan-overrides/<override_date>")
+@_admin_required
+def delete_scan_override(override_date: str):
+    try:
+        _date.fromisoformat(override_date)
+    except ValueError:
+        return jsonify({"error": "Invalid date format"}), 400
+    db.delete_scan_override(override_date)
+    return jsonify({"message": f"Override for {override_date} removed"}), 200
+
+
+@admin_bp.get("/scan-day-status")
+@_admin_required
+def scan_day_status_api():
+    """Return the scan status for a given date (used by the frontend calendar)."""
+    from services.holiday_service import get_day_scan_status
+    date_str = request.args.get("date", _date.today().isoformat())
+    try:
+        _date.fromisoformat(date_str)
+    except ValueError:
+        return jsonify({"error": "Invalid date format"}), 400
+    status = get_day_scan_status(date_str)
+    override = db.get_scan_override(date_str)
+    return jsonify({
+        "date":          date_str,
+        "status":        status,
+        "override":      override,
+    })
+
+
+# ---------------------------------------------------------------------------
+# School settings  (configurable time windows + constants)
+# ---------------------------------------------------------------------------
+
+_SETTINGS_DEFAULTS = {
+    'arrival_early_start':     '05:00',
+    'arrival_early_end':       '09:00',
+    'arrival_ontime_end':      '10:00',
+    'arrival_late_end':        '12:00',
+    'departure_start':         '14:00',
+    'departure_end':           '19:00',
+    'duplicate_scan_cooldown': '5',
+    'non_arrival_cutoff':      '12:00',
+    'non_departure_cutoff':    '18:00',
+}
+
+
+@admin_bp.get("/school-settings")
+@_admin_required
+def get_school_settings_api(current_user=None):
+    settings = db.get_school_settings()
+    return jsonify({**_SETTINGS_DEFAULTS, **settings})
+
+
+@admin_bp.put("/school-settings")
+@_admin_required
+def update_school_settings_api(current_user=None):
+    data = request.get_json(silent=True) or {}
+    saved = {}
+    for key, value in data.items():
+        if key in _SETTINGS_DEFAULTS:
+            db.upsert_school_setting(key, str(value))
+            saved[key] = str(value)
+    return jsonify({"status": "ok", "saved": saved})
+
+
+# ---------------------------------------------------------------------------
+# Student groups
+# ---------------------------------------------------------------------------
+
+_VALID_TRANSPORT_MODES = {'parent_drop', 'school_bus', 'self'}
+
+
+@admin_bp.get("/student-groups")
+@_admin_required
+def get_student_groups(current_user=None):
+    from collections import Counter
+    groups   = db.get_student_groups()
+    students = db.get_all_students() or []
+    counts   = Counter(s.get('group_tag') for s in students if s.get('group_tag'))
+    for g in groups:
+        g['student_count'] = counts.get(g['name'], 0)
+    return jsonify(groups)
+
+
+@admin_bp.post("/student-groups")
+@_admin_required
+def create_student_group(current_user=None):
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    transport_mode = (data.get("transport_mode") or "parent_drop").strip()
+    description = (data.get("description") or "").strip() or None
+
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    if transport_mode not in _VALID_TRANSPORT_MODES:
+        return jsonify({"error": f"transport_mode must be one of {sorted(_VALID_TRANSPORT_MODES)}"}), 400
+
+    try:
+        group = db.create_student_group({
+            "name": name,
+            "transport_mode": transport_mode,
+            "description": description,
+        })
+        return jsonify(group), 201
+    except Exception as exc:
+        if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+            return jsonify({"error": f'A group named "{name}" already exists'}), 409
+        return jsonify({"error": str(exc)}), 500
+
+
+@admin_bp.put("/student-groups/<group_id>")
+@_admin_required
+def update_student_group(group_id: str, current_user=None):
+    data = request.get_json(silent=True) or {}
+    updates = {}
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            return jsonify({"error": "name cannot be blank"}), 400
+        updates["name"] = name
+    if "transport_mode" in data:
+        if data["transport_mode"] not in _VALID_TRANSPORT_MODES:
+            return jsonify({"error": f"transport_mode must be one of {sorted(_VALID_TRANSPORT_MODES)}"}), 400
+        updates["transport_mode"] = data["transport_mode"]
+    if "description" in data:
+        updates["description"] = (data["description"] or "").strip() or None
+
+    if not updates:
+        return jsonify({"error": "Nothing to update"}), 400
+
+    try:
+        group = db.update_student_group(group_id, updates)
+        return jsonify(group)
+    except Exception as exc:
+        if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+            return jsonify({"error": "A group with that name already exists"}), 409
+        return jsonify({"error": str(exc)}), 500
+
+
+@admin_bp.delete("/student-groups/<group_id>")
+@_admin_required
+def delete_student_group(group_id: str, current_user=None):
+    db.delete_student_group(group_id)
+    return jsonify({"message": "Group deleted"})
