@@ -1,12 +1,12 @@
 import logging
 import re
-import threading
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
 from services.attendance_service import process_scan
 from services import notification_service
+from services import background
 from services.teacher_attendance_service import process_teacher_scan
 from services import supabase_client as db
 from services.holiday_service import get_day_scan_status, STATUS_OPEN, STATUS_WEEKEND, STATUS_HOLIDAY, STATUS_BLOCKED, STATUS_OVERRIDE
@@ -106,11 +106,10 @@ def handle_scan():
     elif student:
         result = process_scan(barcode, now, entry_point, student=student)
         if result["status"] == "success":
-            threading.Thread(
-                target=_fire_notifications,
-                args=(barcode, result["action"], result.get("comments"), result["timestamp"]),
-                daemon=True,
-            ).start()
+            background.run(
+                _fire_notifications,
+                barcode, result["action"], result.get("comments"), result["timestamp"],
+            )
     else:
         result = {
             "status": "error",
@@ -165,11 +164,10 @@ def confirm_scan():
             return jsonify({"status": "error", "message": "Student record not found"}), 404
         result = process_scan(barcode, now, entry_point, student=student)
         if result["status"] == "success":
-            threading.Thread(
-                target=_fire_notifications,
-                args=(barcode, result["action"], result.get("comments"), result["timestamp"]),
-                daemon=True,
-            ).start()
+            background.run(
+                _fire_notifications,
+                barcode, result["action"], result.get("comments"), result["timestamp"],
+            )
 
     status_code = 200 if result["status"] == "success" else 400
     return jsonify(result), status_code

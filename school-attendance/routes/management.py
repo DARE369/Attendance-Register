@@ -4,7 +4,6 @@ All routes require JWT. Mutations are audit-logged in daemon threads.
 """
 import logging
 import re
-import threading
 import uuid
 from datetime import datetime
 
@@ -14,6 +13,7 @@ from routes.auth import require_role
 _admin_required = require_role("admin", "super_admin")
 from services import supabase_client as db
 from services import csv_service
+from services import background
 from services.audit_service import log_audit
 
 management_bp = Blueprint("management", __name__)
@@ -42,18 +42,14 @@ def _time_minutes(value):
 
 
 def _audit(admin_id, action, table_name, record_id=None, old_value=None, new_value=None, description=None):
-    threading.Thread(
-        target=log_audit,
-        args=(admin_id, action),
-        kwargs=dict(
-            table_name=table_name,
-            record_id=record_id,
-            old_value=old_value,
-            new_value=new_value,
-            description=description,
-        ),
-        daemon=True,
-    ).start()
+    background.run(
+        log_audit, admin_id, action,
+        table_name=table_name,
+        record_id=record_id,
+        old_value=old_value,
+        new_value=new_value,
+        description=description,
+    )
 
 
 # ---------------------------------------------------------------------------

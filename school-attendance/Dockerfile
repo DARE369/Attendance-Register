@@ -11,4 +11,5 @@ RUN mkdir -p logs
 
 EXPOSE 8080
 
-CMD ["gunicorn", "wsgi:application", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "--access-logfile", "-"]
+# Cloud Run sets $PORT (8080 by default); Fly uses 8080.
+CMD exec gunicorn wsgi:application --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120 --access-logfile -

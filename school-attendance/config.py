@@ -27,3 +27,8 @@ class Config:
     D7_WHATSAPP_FROM = os.getenv("D7_WHATSAPP_FROM", "")  # your registered WhatsApp number e.g. +2348012345678
 
     SCHOOL_NAME = os.getenv("SCHOOL_NAME", "Peculiar School")
+
+    # Seconds a request waits for its background work (notifications, audit
+    # writes) before replying. Set to 5 on Google Cloud Run, where CPU is
+    # throttled once a response is sent. 0 = pure fire-and-forget.
+    BACKGROUND_WAIT_SECONDS = float(os.getenv("BACKGROUND_WAIT_SECONDS", "0"))

@@ -12,3 +12,6 @@ logs/
 
 # Real pupil/parent data exports: never commit (repo is public)
 /LPS_*.csv
+
+# Cloud Run secrets (copy cloudrun/env.example.yaml)
+school-attendance/cloudrun/env.yaml
